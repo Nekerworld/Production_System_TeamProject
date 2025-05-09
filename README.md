@@ -27,12 +27,6 @@
 
 추가적으로 `tensorboard`, `protobuf`, `h5py`, `joblib`, `graphviz` 등도 함께 사용되었습니다.
 
-### 💻 하드웨어 환경
-
-* **CPU**: Intel(R) Xeon(R) Gold 6126 @ 2.60GHz
-* **GPU**: NVIDIA GeForce RTX 2080 Ti
-* **RAM**: 32GB
-
 ---
 
 ### 📎 실행 방법 (예시)
