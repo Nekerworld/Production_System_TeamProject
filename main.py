@@ -97,6 +97,7 @@ plt.title('Accuracy over Epochs')
 plt.xlabel('Epochs')
 plt.ylabel('Accuracy')
 plt.legend()
+plt.grid()
 plt.tight_layout()
 
 # Confusion Matrix + Classification Report
