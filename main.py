@@ -14,7 +14,6 @@ from sklearn.covariance import MinCovDet
 from sklearn.model_selection import train_test_split
 
 five_process_180sec = r'C:\\YS\\TUK\\S4E1\\생산시스템구축실무\\TeamProject\\Production_System_TeamProject\\data\\장비이상 조기탐지\\5공정_180sec'
-architecture_save_path = r'C:\\YS\\TUK\S4E1\\생산시스템구축실무\\TeamProject\\report\\'
 
 # 모든 csv 파일 목록을 가져옴 (Error Lot 제외)
 all_csv_files = glob(os.path.join(five_process_180sec, '*.csv'))
@@ -81,9 +80,7 @@ model = Sequential([
     Dense(1, activation='sigmoid')
 ])
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-print('===================== LSTM =====================')
-os.environ["PATH"] += os.pathsep + 'C:/Program Files/Graphviz/bin'
-plot_model(model, to_file=os.path.join(architecture_save_path, "LSTM_Architecture.png"), show_shapes=True, show_layer_names=True)
+print('\n===================== LSTM =====================')
 history = model.fit(X_resampled, y_resampled, epochs=3, batch_size=32, validation_split=0.2)
 
 # 기존의 X, y에서 train/test 분리
@@ -102,8 +99,7 @@ decoded = RepeatVector(timesteps)(encoded)
 decoded = LSTM(input_dim, return_sequences=True)(decoded)
 autoencoder = Model(inputs, decoded)
 autoencoder.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
-print('===================== Autoencoder =====================')
-plot_model(autoencoder, to_file=os.path.join(architecture_save_path, "Autoencoder_Architecture.png"), show_shapes=True, show_layer_names=True)
+print('\n===================== Autoencoder =====================')
 history_ae = autoencoder.fit(X_train, X_train, epochs=20, batch_size=32, validation_split=0.1, verbose=0)
 
 # 학습
@@ -130,8 +126,7 @@ def transformer_model(input_shape):
 
 transformer = transformer_model((timesteps, input_dim))
 transformer.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-print('===================== Transformer =====================')
-plot_model(transformer, to_file=os.path.join(architecture_save_path, "Transformer_Architecture.png"), show_shapes=True, show_layer_names=True)
+print('\n===================== Transformer =====================')
 history_tr = transformer.fit(X_train, y_train, epochs=20, batch_size=32, validation_split=0.1, verbose=0)
 
 y_pred_tr = (transformer.predict(X_test) > 0.5).astype(int)
