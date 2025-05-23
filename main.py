@@ -75,61 +75,59 @@ X_resampled, y_resampled = smote.fit_resample(X_flat, y)
 X_resampled = X_resampled.reshape(-1, X.shape[1], X.shape[2])
 
 model = Sequential([
-    LSTM(64, input_shape=(X_resampled.shape[1], X_resampled.shape[2]), return_sequences=False),
+    LSTM(128, input_shape=(X_resampled.shape[1], X_resampled.shape[2]), return_sequences=False),
+    Dense(64, activation='relu'),
     Dense(32, activation='relu'),
     Dense(1, activation='sigmoid')
 ])
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 print('\n===================== LSTM =====================')
-history = model.fit(X_resampled, y_resampled, epochs=3, batch_size=32, validation_split=0.2)
+history = model.fit(X_resampled, y_resampled, epochs=200, batch_size=32, validation_split=0.2, verbose=1)
 
-# 기존의 X, y에서 train/test 분리
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
+# # 기존의 X, y에서 train/test 분리
+# X_train, X_test, y_train, y_test = train_test_split(
+#     X, y, test_size=0.2, random_state=42, stratify=y
+# )
 
-# === Autoencoder 기반 ===
-input_dim = X_train.shape[2]
-timesteps = X_train.shape[1]
+# # === Autoencoder 기반 ===
+# input_dim = X_train.shape[2]
+# timesteps = X_train.shape[1]
 
-# Autoencoder 구성
-inputs = Input(shape=(timesteps, input_dim))
-encoded = LSTM(64, return_sequences=False)(inputs)
-decoded = RepeatVector(timesteps)(encoded)
-decoded = LSTM(input_dim, return_sequences=True)(decoded)
-autoencoder = Model(inputs, decoded)
-autoencoder.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
-print('\n===================== Autoencoder =====================')
-history_ae = autoencoder.fit(X_train, X_train, epochs=20, batch_size=32, validation_split=0.1, verbose=0)
+# # Autoencoder 구성
+# inputs = Input(shape=(timesteps, input_dim))
+# encoded = LSTM(64, return_sequences=False)(inputs)
+# decoded = RepeatVector(timesteps)(encoded)
+# decoded = LSTM(input_dim, return_sequences=True)(decoded)
+# autoencoder = Model(inputs, decoded)
+# autoencoder.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
+# print('\n===================== Autoencoder =====================')
+# history_ae = autoencoder.fit(X_train, X_train, epochs=50, batch_size=32, validation_split=0.1, verbose=1)
 
-# 학습
-autoencoder.fit(X_train, X_train, epochs=20, batch_size=32, validation_split=0.1, verbose=0)
+# # 예측 → Reconstruction Error 계산
+# X_test_pred = autoencoder.predict(X_test)
+# mse = np.mean(np.power(X_test - X_test_pred, 2), axis=(1, 2))
+# threshold = np.percentile(mse, 95)
+# y_pred_ae = (mse > threshold).astype(int)
 
-# 예측 → Reconstruction Error 계산
-X_test_pred = autoencoder.predict(X_test)
-mse = np.mean(np.power(X_test - X_test_pred, 2), axis=(1, 2))
-threshold = np.percentile(mse, 95)
-y_pred_ae = (mse > threshold).astype(int)
+# # === Transformer 기반 ===
+# def transformer_model(input_shape):
+#     inputs = Input(shape=input_shape)
+#     x = Dense(64)(inputs)
+#     attn = MultiHeadAttention(num_heads=2, key_dim=32)(x, x)
+#     x = LayerNormalization()(x + attn)
+#     x = GlobalAveragePooling1D()(x)
+#     x = Dense(32, activation='relu')(x)
+#     x = Dropout(0.3)(x)
+#     output = Dense(1, activation='sigmoid')(x)
+#     model = Model(inputs, output)
+#     return model
 
-# === Transformer 기반 ===
-def transformer_model(input_shape):
-    inputs = Input(shape=input_shape)
-    x = Dense(64)(inputs)
-    attn = MultiHeadAttention(num_heads=2, key_dim=32)(x, x)
-    x = LayerNormalization()(x + attn)
-    x = GlobalAveragePooling1D()(x)
-    x = Dense(32, activation='relu')(x)
-    x = Dropout(0.3)(x)
-    output = Dense(1, activation='sigmoid')(x)
-    model = Model(inputs, output)
-    return model
+# transformer = transformer_model((timesteps, input_dim))
+# transformer.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+# print('\n===================== Transformer =====================')
+# history_tr = transformer.fit(X_train, y_train, epochs=50, batch_size=32, validation_split=0.1, verbose=1)
 
-transformer = transformer_model((timesteps, input_dim))
-transformer.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-print('\n===================== Transformer =====================')
-history_tr = transformer.fit(X_train, y_train, epochs=20, batch_size=32, validation_split=0.1, verbose=0)
-
-y_pred_tr = (transformer.predict(X_test) > 0.5).astype(int)
+# y_pred_tr = (transformer.predict(X_test) > 0.5).astype(int)
 
 def plot_history(history, title_prefix="Model"):
     plt.figure(figsize=(12, 5))
@@ -137,6 +135,7 @@ def plot_history(history, title_prefix="Model"):
     plt.plot(history.history['loss'], 'b-', label='Training Loss')
     plt.plot(history.history['val_loss'], 'r-', label='Validation Loss')
     plt.title(f'{title_prefix} Loss over Epochs')
+    plt.grid()
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
@@ -179,14 +178,14 @@ plot_history(history, title_prefix="LSTM")
 plot_confusion(y_resampled, (model.predict(X_resampled) > 0.5).astype(int), title="LSTM Confusion Matrix")
 plot_mahalanobis(X, y, title="LSTM Mahalanobis Score")
 
-# Autoencoder
-plot_history(history_ae, title_prefix="Autoencoder")
-plot_confusion(y_test, y_pred_ae, title="Autoencoder Confusion Matrix")
-plot_mahalanobis(X_test, y_test, title="Autoencoder Mahalanobis Score")
+# # Autoencoder
+# plot_history(history_ae, title_prefix="Autoencoder")
+# plot_confusion(y_test, y_pred_ae, title="Autoencoder Confusion Matrix")
+# plot_mahalanobis(X_test, y_test, title="Autoencoder Mahalanobis Score")
 
-# Transformer
-plot_history(history_tr, title_prefix="Transformer")
-plot_confusion(y_test, y_pred_tr, title="Transformer Confusion Matrix")
-plot_mahalanobis(X_test, y_test, title="Transformer Mahalanobis Score")
+# # Transformer
+# plot_history(history_tr, title_prefix="Transformer")
+# plot_confusion(y_test, y_pred_tr, title="Transformer Confusion Matrix")
+# plot_mahalanobis(X_test, y_test, title="Transformer Mahalanobis Score")
 
 plt.show()
