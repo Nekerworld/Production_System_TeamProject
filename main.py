@@ -1,3 +1,5 @@
+# 현재는 discrete하게 결과가 나뉘고 있는데, 이를 연속적으로 한번 해보고 성능 괜찮게 나오면 고장 확률 뱉는 모델로 변경
+
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -12,7 +14,9 @@ from imblearn.over_sampling import SMOTE
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
 from sklearn.covariance import MinCovDet
 from sklearn.model_selection import train_test_split
+from tensorflow.keras.callbacks import EarlyStopping
 
+# 로컬에서 실행시 경로 알맞게 설정해주세요
 five_process_180sec = r'C:\\YS\\TUK\\S4E1\\생산시스템구축실무\\TeamProject\\Production_System_TeamProject\\data\\장비이상 조기탐지\\5공정_180sec'
 
 # 모든 csv 파일 목록을 가져옴 (Error Lot 제외)
@@ -38,11 +42,8 @@ five_process_180sec_merged.sort_values(by='datetime', inplace=True)
 five_process_180sec_merged.reset_index(drop=True, inplace=True)
 five_process_180sec_error_lot = pd.read_csv(os.path.join(five_process_180sec, 'Error Lot list.csv'))
 
-# 복사본 생성
 csv_data = five_process_180sec_merged.copy()
-csv_data['label'] = 0  # 초기값: 정상(0)
-
-# Error Lot 리스트 불러오기
+csv_data['label'] = 0
 error_df = five_process_180sec_error_lot.copy()
 
 # 첫 컬럼은 날짜, 나머지는 해당 날짜에 이상이 있었던 Index들
@@ -56,7 +57,7 @@ for i in range(len(error_df)):
 
 def create_sequences(df, window_size=10):
     X, y = [], []
-    features = df[['Temp', 'Current']].values  # 딱 한 번만 슬라이싱
+    features = df[['Temp', 'Current']].values
     labels = df['label'].values
 
     for i in range(len(df) - window_size):
@@ -81,8 +82,24 @@ model = Sequential([
     Dense(1, activation='sigmoid')
 ])
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+early_stopping = EarlyStopping(
+    monitor='val_loss',
+    patience=5,
+    restore_best_weights=True,
+    verbose=1
+)
+
 print('\n===================== LSTM =====================')
-history = model.fit(X_resampled, y_resampled, epochs=200, batch_size=32, validation_split=0.2, verbose=1)
+history = model.fit(
+    X_resampled, 
+    y_resampled, 
+    epochs=200, 
+    batch_size=32, 
+    validation_split=0.2, 
+    callbacks=[early_stopping],
+    verbose=1
+)
 
 # # 기존의 X, y에서 train/test 분리
 # X_train, X_test, y_train, y_test = train_test_split(
