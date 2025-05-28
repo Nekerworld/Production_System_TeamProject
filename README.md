@@ -4,6 +4,7 @@
 ## ⚙️ 개발 환경 및 실행 환경 (Environment)
 
 이 프로젝트는 CNC 가공 공정 데이터를 기반으로 한 딥러닝 품질 예측 모델을 구현하며, 다음과 같은 소프트웨어 및 하드웨어 환경에서 수행되었습니다.
+### [데이터 링크 (Kamp AI)](https://www.kamp-ai.kr/aidataDetail?page=1&DATASET_SEQ=23)
 
 ### 📌 Python 환경
 
@@ -33,10 +34,8 @@
 
 ```bash
 pip install -r requirements.txt
-python train_model.py
+python main.py
 ```
-
-※ `requirements.txt`는 `pip freeze > requirements.txt`로 직접 생성 가능하며, 프로젝트 공유 시 포함을 권장합니다.
 
 ---
 
