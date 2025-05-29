@@ -10,12 +10,12 @@ import streamlit as st
 import pandas as pd
 import os
 from glob import glob
-from imblearn.over_sampling import SMOTE
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report, roc_curve, auc, roc_auc_score
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report, roc_curve, auc, roc_auc_score, f1_score
 from sklearn.covariance import MinCovDet
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.callbacks import EarlyStopping
 import seaborn as sns
+from imblearn.over_sampling import SMOTE
 
 # 로컬에서 실행시 경로 알맞게 설정해주세요
 five_process_180sec = r'C:\\YS\\TUK\\S4E1\\생산시스템구축실무\\TeamProject\\Production_System_TeamProject\\data\\장비이상 조기탐지\\5공정_180sec'
@@ -238,5 +238,7 @@ y_pred_default = (y_scores >= 0.5).astype(int)
 plot_confusion(y_resampled, y_pred_default, title="Confusion Matrix (Default Threshold 0.5)")
 
 plot_mahalanobis(X, y, title="Mahalanobis Distance Score")
+
+print(f"F1 Score: {f1_score(y_resampled, y_pred_optimal)}")
 
 plt.show()
