@@ -1,3 +1,5 @@
+# 현재는 discrete하게 결과가 나뉘고 있는데, 이를 연속적으로 한번 해보고 성능 괜찮게 나오면 고장 확률 뱉는 모델로 변경
+
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -8,11 +10,14 @@ import streamlit as st
 import pandas as pd
 import os
 from glob import glob
-from imblearn.over_sampling import SMOTE
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report, roc_curve, auc, roc_auc_score, f1_score
 from sklearn.covariance import MinCovDet
 from sklearn.model_selection import train_test_split
+from tensorflow.keras.callbacks import EarlyStopping
+import seaborn as sns
+from imblearn.over_sampling import SMOTE
 
+# 로컬에서 실행시 경로 알맞게 설정해주세요
 five_process_180sec = r'C:\\YS\\TUK\\S4E1\\생산시스템구축실무\\TeamProject\\Production_System_TeamProject\\data\\장비이상 조기탐지\\5공정_180sec'
 
 # 모든 csv 파일 목록을 가져옴 (Error Lot 제외)
@@ -38,11 +43,8 @@ five_process_180sec_merged.sort_values(by='datetime', inplace=True)
 five_process_180sec_merged.reset_index(drop=True, inplace=True)
 five_process_180sec_error_lot = pd.read_csv(os.path.join(five_process_180sec, 'Error Lot list.csv'))
 
-# 복사본 생성
 csv_data = five_process_180sec_merged.copy()
-csv_data['label'] = 0  # 초기값: 정상(0)
-
-# Error Lot 리스트 불러오기
+csv_data['label'] = 0
 error_df = five_process_180sec_error_lot.copy()
 
 # 첫 컬럼은 날짜, 나머지는 해당 날짜에 이상이 있었던 Index들
@@ -56,7 +58,7 @@ for i in range(len(error_df)):
 
 def create_sequences(df, window_size=10):
     X, y = [], []
-    features = df[['Temp', 'Current']].values  # 딱 한 번만 슬라이싱
+    features = df[['Temp', 'Current']].values
     labels = df['label'].values
 
     for i in range(len(df) - window_size):
@@ -81,15 +83,31 @@ model = Sequential([
     Dense(1, activation='sigmoid')
 ])
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+early_stopping = EarlyStopping(
+    monitor='val_loss',
+    patience=5,
+    restore_best_weights=True,
+    verbose=1
+)
+
 print('\n===================== LSTM =====================')
-history = model.fit(X_resampled, y_resampled, epochs=200, batch_size=32, validation_split=0.2, verbose=1)
+history = model.fit(
+    X_resampled, 
+    y_resampled, 
+    epochs=200, 
+    batch_size=32, 
+    validation_split=0.2, 
+    callbacks=[early_stopping],
+    verbose=1
+)
 
 # # 기존의 X, y에서 train/test 분리
 # X_train, X_test, y_train, y_test = train_test_split(
 #     X, y, test_size=0.2, random_state=42, stratify=y
 # )
 
-# # === Autoencoder 기반 ===
+# === Autoencoder 기반 ===
 # input_dim = X_train.shape[2]
 # timesteps = X_train.shape[1]
 
@@ -109,7 +127,7 @@ history = model.fit(X_resampled, y_resampled, epochs=200, batch_size=32, validat
 # threshold = np.percentile(mse, 95)
 # y_pred_ae = (mse > threshold).astype(int)
 
-# # === Transformer 기반 ===
+# === Transformer 기반 ===
 # def transformer_model(input_shape):
 #     inputs = Input(shape=input_shape)
 #     x = Dense(64)(inputs)
@@ -168,24 +186,59 @@ def plot_mahalanobis(X_seq, y_true, title="Mahalanobis Distance Score"):
     plt.xlabel("Sample Index")
     plt.ylabel("Anomaly Score")
     plt.legend()
-    plt.grid(True)
+    plt.grid()
     plt.tight_layout()
     top_indices = np.argsort(scores)[::-1][:5]
     return top_indices, scores[top_indices]
 
 # LSTM
 plot_history(history, title_prefix="LSTM")
-plot_confusion(y_resampled, (model.predict(X_resampled) > 0.5).astype(int), title="LSTM Confusion Matrix")
-plot_mahalanobis(X, y, title="LSTM Mahalanobis Score")
 
-# # Autoencoder
-# plot_history(history_ae, title_prefix="Autoencoder")
-# plot_confusion(y_test, y_pred_ae, title="Autoencoder Confusion Matrix")
-# plot_mahalanobis(X_test, y_test, title="Autoencoder Mahalanobis Score")
+# 연속적 이상 점수화 및 ROC 커브 분석
+y_scores = model.predict(X_resampled).flatten()
 
-# # Transformer
-# plot_history(history_tr, title_prefix="Transformer")
-# plot_confusion(y_test, y_pred_tr, title="Transformer Confusion Matrix")
-# plot_mahalanobis(X_test, y_test, title="Transformer Mahalanobis Score")
+# 이상 점수 분포 시각화
+plt.figure(figsize=(12, 5))
+plt.subplot(1, 2, 1)
+sns.kdeplot(data=y_scores[y_resampled == 0], label='Normal', fill=True, alpha=0.3)
+sns.kdeplot(data=y_scores[y_resampled == 1], label='Anomaly', fill=True, alpha=0.3)
+plt.title('Anomaly Score Distribution')
+plt.xlabel('Anomaly Score')
+plt.ylabel('Density')
+plt.legend()
+
+# ROC 커브 및 최적 임계값 계산
+fpr, tpr, thresholds = roc_curve(y_resampled, y_scores)
+roc_auc = auc(fpr, tpr)
+
+# 최적 임계값 찾기 (Youden's J statistic)
+optimal_idx = np.argmax(tpr - fpr)
+optimal_threshold = thresholds[optimal_idx]
+
+plt.subplot(1, 2, 2)
+plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.scatter(fpr[optimal_idx], tpr[optimal_idx], color='red', 
+           label=f'Optimal Threshold: {optimal_threshold:.2f}')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC Curve')
+plt.grid()
+plt.legend(loc="lower right")
+plt.tight_layout()
+
+# 최적 임계값으로 예측
+y_pred_optimal = (y_scores >= optimal_threshold).astype(int)
+plot_confusion(y_resampled, y_pred_optimal, title="Confusion Matrix (Optimal Threshold)")
+
+# 기존 0.5 임계값과 비교
+y_pred_default = (y_scores >= 0.5).astype(int)
+plot_confusion(y_resampled, y_pred_default, title="Confusion Matrix (Default Threshold 0.5)")
+
+plot_mahalanobis(X, y, title="Mahalanobis Distance Score")
+
+print(f"F1 Score: {f1_score(y_resampled, y_pred_optimal)}")
 
 plt.show()
