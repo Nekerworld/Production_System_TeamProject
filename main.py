@@ -15,7 +15,8 @@ from sklearn.covariance import MinCovDet
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.callbacks import EarlyStopping
 import seaborn as sns
-from imblearn.over_sampling import SMOTE
+from imblearn.over_sampling import SMOTE, RandomOverSampler, BorderlineSMOTE, ADASYN, SVMSMOTE
+from imblearn.under_sampling import RandomUnderSampler, TomekLinks, ClusterCentroids, NearMiss, OneSidedSelection
 
 # 로컬에서 실행시 경로 알맞게 설정해주세요
 five_process_180sec = r'C:\\YS\\TUK\\S4E1\\생산시스템구축실무\\TeamProject\\Production_System_TeamProject\\data\\장비이상 조기탐지\\5공정_180sec'
@@ -71,7 +72,7 @@ X, y = create_sequences(csv_data, window_size=10)
 # 평탄화 (LSTM용 시계열 데이터를 2D로 바꿔야 SMOTE 가능)
 X_flat = X.reshape(X.shape[0], -1)  # (samples, timesteps * features)
 # SMOTE 적용
-smote = SMOTE(sampling_strategy='auto', random_state=42)
+smote = BorderlineSMOTE(sampling_strategy='auto', random_state=42)
 X_resampled, y_resampled = smote.fit_resample(X_flat, y)
 # 다시 원래 LSTM 입력 형태로 복원
 X_resampled = X_resampled.reshape(-1, X.shape[1], X.shape[2])
@@ -152,7 +153,7 @@ def plot_history(history, title_prefix="Model"):
     plt.subplot(1, 2, 1)
     plt.plot(history.history['loss'], 'b-', label='Training Loss')
     plt.plot(history.history['val_loss'], 'r-', label='Validation Loss')
-    plt.title(f'{title_prefix} Loss over Epochs')
+    plt.title(f'{title_prefix} Loss over {len(history.history["loss"])} Epochs')
     plt.grid()
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
@@ -160,7 +161,7 @@ def plot_history(history, title_prefix="Model"):
     plt.subplot(1, 2, 2)
     plt.plot(history.history['accuracy'], 'b-', label='Training Accuracy')
     plt.plot(history.history['val_accuracy'], 'r-', label='Validation Accuracy')
-    plt.title(f'{title_prefix} Accuracy over Epochs')
+    plt.title(f'{title_prefix} Accuracy over {len(history.history["accuracy"])} Epochs')
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
     plt.legend()
