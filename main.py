@@ -159,26 +159,6 @@ y_scores = model.predict(X_test).flatten()
 
 # y_pred_tr = (transformer.predict(X_test) > 0.5).astype(int)
 
-def plot_history(history, title_prefix="Model"):
-    plt.figure(figsize=(12, 5))
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['loss'], 'b-', label='Training Loss')
-    plt.plot(history.history['val_loss'], 'r-', label='Validation Loss')
-    plt.title(f'{title_prefix} Loss over {len(history.history["loss"])} Epochs')
-    plt.grid()
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['accuracy'], 'b-', label='Training Accuracy')
-    plt.plot(history.history['val_accuracy'], 'r-', label='Validation Accuracy')
-    plt.title(f'{title_prefix} Accuracy over {len(history.history["accuracy"])} Epochs')
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.legend()
-    plt.grid()
-    plt.tight_layout()
-
 def plot_confusion(y_true, y_pred, title="Confusion Matrix"):
     cm = confusion_matrix(y_true, y_pred)
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Normal", "Anomaly"])
@@ -186,83 +166,6 @@ def plot_confusion(y_true, y_pred, title="Confusion Matrix"):
     plt.title(title)
     print(classification_report(y_true, y_pred, target_names=["Normal", "Anomaly"]))
 
-def plot_time_series_overlay(y_scores, y_true, timestamps, title="Time Series Anomaly Detection"):
-    plt.figure(figsize=(15, 6))
-    
-    # 이상 점수 시계열 플롯
-    plt.plot(range(len(y_scores)), y_scores, label='Anomaly Score', alpha=0.7, color='blue')
-    
-    # 실제 이상 발생 지점 표시
-    anomaly_indices = np.where(y_true == 1)[0]
-    plt.scatter(anomaly_indices, y_scores[anomaly_indices], 
-               color='red', label='Anomalies', alpha=0.7, s=100)
-    
-    # 임계값 선 추가
-    plt.axhline(y=0.5, color='r', linestyle='--', label='Default Threshold (0.5)')
-    
-    # 그래프 스타일 설정
-    plt.title(title)
-    plt.xlabel('Sample Index')
-    plt.ylabel('Anomaly Score')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    return plt
-
-def plot_borderline_analysis(X_flat, y, y_scores, title_prefix="Data Analysis"):
-    plt.figure(figsize=(15, 10))
-    
-    # 1. 데이터 분포 시각화
-    plt.subplot(2, 2, 1)
-    pca = PCA(n_components=2)
-    X_2d = pca.fit_transform(X_flat)
-    
-    # 정상/이상 데이터 구분
-    normal_mask = y == 0
-    anomaly_mask = y == 1
-    
-    plt.scatter(X_2d[normal_mask, 0], X_2d[normal_mask, 1], 
-               c='blue', label='Normal', alpha=0.3)
-    plt.scatter(X_2d[anomaly_mask, 0], X_2d[anomaly_mask, 1], 
-               c='red', label='Anomaly', alpha=0.3)
-    plt.title(f'{title_prefix} - Data Distribution')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    # 2. 이상 점수 분포
-    plt.subplot(2, 2, 2)
-    sns.kdeplot(data=y_scores[y == 0], label='Normal', fill=True, alpha=0.3)
-    sns.kdeplot(data=y_scores[y == 1], label='Anomaly', fill=True, alpha=0.3)
-    plt.axvline(x=0.5, color='r', linestyle='--', label='Default Threshold')
-    plt.title(f'{title_prefix} - Score Distribution')
-    plt.xlabel('Anomaly Score')
-    plt.ylabel('Density')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    # 3. 성능 지표
-    plt.subplot(2, 2, 3)
-    metrics = {
-        'Metrics': {
-            'Precision': precision_score(y, y_scores > 0.5, zero_division=0),
-            'Recall': recall_score(y, y_scores > 0.5, zero_division=0),
-            'F1': f1_score(y, y_scores > 0.5, zero_division=0)
-        }
-    }
-    
-    x = np.arange(3)
-    width = 0.35
-    
-    plt.bar(x, list(metrics['Metrics'].values()), width)
-    plt.xticks(x, ['Precision', 'Recall', 'F1 Score'])
-    plt.title(f'{title_prefix} - Performance Metrics')
-    plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    return plt
-
-def plot_detailed_borderline_analysis(X_flat, y, y_scores, title_prefix="Detailed Analysis"):
     plt.figure(figsize=(20, 15))
     
     # 1. 경계선 영역의 동적 임계값 분석
@@ -368,29 +271,6 @@ def plot_detailed_borderline_analysis(X_flat, y, y_scores, title_prefix="Detaile
     
     plt.tight_layout()
     return plt
-
-# LSTM
-plot_history(history, title_prefix="LSTM")
-
-# Time Series Overlay 시각화
-plot_time_series_overlay(y_scores, y_test, None, title="LSTM Anomaly Detection Over Time (Test Data)")
-
-# 데이터 분석 시각화
-plot_borderline_analysis(X_test.reshape(X_test.shape[0], -1), y_test, y_scores, title_prefix="Test Data Analysis")
-
-# 상세 데이터 분석 시각화
-plot_detailed_borderline_analysis(X_test.reshape(X_test.shape[0], -1), y_test, y_scores, title_prefix="Detailed Test Data Analysis")
-
-# 이상 점수 분포 시각화
-plt.figure(figsize=(12, 5))
-plt.subplot(1, 2, 1)
-sns.kdeplot(data=y_scores[y_test == 0], label='Normal', fill=True, alpha=0.3)
-sns.kdeplot(data=y_scores[y_test == 1], label='Anomaly', fill=True, alpha=0.3)
-plt.title('Anomaly Score Distribution (Test Data)')
-plt.xlabel('Anomaly Score')
-plt.ylabel('Density')
-plt.legend()
-
 # ROC 커브 및 최적 임계값 계산
 fpr, tpr, thresholds = roc_curve(y_test, y_scores)
 roc_auc = auc(fpr, tpr)
@@ -398,21 +278,6 @@ roc_auc = auc(fpr, tpr)
 # 최적 임계값 찾기 (Youden's J statistic)
 optimal_idx = np.argmax(tpr - fpr)
 optimal_threshold = thresholds[optimal_idx]
-
-plt.subplot(1, 2, 2)
-plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
-plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-plt.scatter(fpr[optimal_idx], tpr[optimal_idx], color='red', 
-           label=f'Optimal Threshold: {optimal_threshold:.2f}')
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('ROC Curve (Test Data)')
-plt.grid()
-plt.legend(loc="lower right")
-plt.tight_layout()
-
 # 최적 임계값으로 예측
 y_pred_optimal = (y_scores >= optimal_threshold).astype(int)
 plot_confusion(y_test, y_pred_optimal, title="Confusion Matrix (Optimal Threshold - Test Data)")
@@ -423,4 +288,39 @@ plot_confusion(y_test, y_pred_default, title="Confusion Matrix (Default Threshol
 
 print(f"Test Data F1 Score: {f1_score(y_test, y_pred_optimal, zero_division=0)}")
 
+# 최적 임계값으로 예측
+y_pred_optimal = (y_scores >= optimal_threshold).astype(int)
+plot_confusion(y_test, y_pred_optimal, title="Confusion Matrix (Optimal Threshold - Test Data)")
+
+# 기존 0.5 임계값과 비교
+y_pred_default = (y_scores >= 0.5).astype(int)
+plot_confusion(y_test, y_pred_default, title="Confusion Matrix (Default Threshold 0.5 - Test Data)")
+
+# 테스트 데이터 F1 스코어 계산
+test_f1 = f1_score(y_test, y_pred_optimal, zero_division=0)
+print(f"\n테스트 데이터 F1 스코어: {test_f1:.4f}")
+
 plt.show()
+
+# 새로운 데이터 예측
+print("\n새로운 데이터 예측을 시작합니다.")
+print("온도와 전류 값을 순서대로 입력해주세요.")
+
+# 새로운 데이터 입력 받기
+new_data = []
+for i in range(WINDOW_SIZE):
+    print(f"\n{WINDOW_SIZE-i}번째 데이터 입력:")
+    temp = float(input("온도 값을 입력하세요: "))
+    current = float(input("전류 값을 입력하세요: "))
+    new_data.append([temp, current])
+
+# 입력 데이터를 모델 입력 형태로 변환
+new_data = np.array(new_data)
+new_data = new_data.reshape(1, WINDOW_SIZE, 2)  # (1, window_size, features)
+
+# 예측
+prediction = model.predict(new_data)[0][0]
+print(f"\n예측 결과:")
+print(f"이상 확률: {prediction*100:.2f}%")
+print(f"정상 확률: {(1-prediction)*100:.2f}%")
+print(f"판정: {'이상' if prediction >= optimal_threshold else '정상'}")
