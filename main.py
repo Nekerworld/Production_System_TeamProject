@@ -72,7 +72,8 @@ def create_sequences(df, window_size=10):
 
     for i in range(len(df) - window_size):
         X.append(features[i:i + window_size])
-        y.append(labels[i + window_size])
+        # 윈도우 내에 하나라도 이상이 있으면 1로 라벨링
+        y.append(1 if np.any(labels[i:i + window_size]) else 0)
 
     return np.array(X), np.array(y)
 
@@ -82,20 +83,25 @@ X, y = create_sequences(csv_data, window_size=WINDOW_SIZE)
 # 평탄화 (LSTM용 시계열 데이터를 2D로 바꿔야 SMOTE 가능)
 X_flat = X.reshape(X.shape[0], -1)  # (samples, timesteps * features)
 
-# 먼저 validation set 분리 (원본 분포 유지)
-X_temp, X_val, y_temp, y_val = train_test_split(
-    X_flat, y, test_size=0.1, random_state=42, stratify=y
-)
+# 시간순으로 데이터 분할 (과거 80% -> 미래 20%)
+train_size = int(len(X_flat) * 0.8)
+X_train, X_test = X_flat[:train_size], X_flat[train_size:]
+y_train, y_test = y[:train_size], y[train_size:]
 
-# 나머지 데이터로 train/test 분리
-X_train, X_test, y_train, y_test = train_test_split(
-    X_temp, y_temp, test_size=0.2, random_state=42, stratify=y_temp
-)
+# validation set도 시간순으로 분할 (train의 마지막 10%)
+val_size = int(len(X_train) * 0.1)
+X_train, X_val = X_train[:-val_size], X_train[-val_size:]
+y_train, y_val = y_train[:-val_size], y_train[-val_size:]
 
-# BorderlineSMOTE로 1:5 비율까지 오버샘플링
+# BorderlineSMOTE로 1:8 비율까지 오버샘플링
 k_neighbors = min(5, sum(y_train == 1))
-smote = BorderlineSMOTE(sampling_strategy=0.2, random_state=42, k_neighbors=k_neighbors)
+smote = BorderlineSMOTE(sampling_strategy=0.125, random_state=42, k_neighbors=k_neighbors)
 X_train, y_train = smote.fit_resample(X_train, y_train)
+
+# 클래스 가중치 계산
+pos = sum(y_train == 1)
+neg = sum(y_train == 0)
+class_weight = {0: 1, 1: neg/pos}
 
 # 다시 원래 LSTM 입력 형태로 복원
 X_train = X_train.reshape(-1, WINDOW_SIZE, X.shape[2])
@@ -109,12 +115,16 @@ model = Sequential([
     Dense(1, activation='sigmoid')
 ])
 
-# Focal Loss 사용
-model.compile(optimizer='adam', loss=focal_loss(gamma=2., alpha=.25), metrics=['accuracy'])
+# Focal Loss와 class_weight 모두 사용
+model.compile(
+    optimizer='adam',
+    loss=focal_loss(gamma=2., alpha=.25),
+    metrics=['accuracy']
+)
 
 early_stopping = EarlyStopping(
     monitor='val_loss',
-    patience=10,  # patience 증가
+    patience=7,  # patience 조정
     restore_best_weights=True,
     verbose=1
 )
@@ -123,10 +133,11 @@ print('\n===================== LSTM =====================')
 history = model.fit(
     X_train, 
     y_train, 
-    epochs=200, 
+    epochs=50,  # epoch 수 조정
     batch_size=32, 
-    validation_data=(X_val, y_val),  # 원본 분포의 validation set 사용
+    validation_data=(X_val, y_val),
     callbacks=[early_stopping],
+    class_weight=class_weight,  # 클래스 가중치 적용
     verbose=1
 )
 
@@ -205,15 +216,9 @@ pr_auc = average_precision_score(y_test, y_scores)
 print(f"\nPR-AUC Score: {pr_auc:.4f}")
 print(f"Test Data F1 Score: {f1_score(y_test, y_pred_optimal, zero_division=0):.4f}")
 
-# 기존 0.5 임계값과 비교
-y_pred_default = (y_scores >= 0.5).astype(int)
-plot_confusion(y_test, y_pred_default, title="Confusion Matrix (Default Threshold 0.5 - Test Data)")
-
-print(f"Test Data F1 Score: {f1_score(y_test, y_pred_optimal, zero_division=0)}")
-
-# 테스트 데이터 F1 스코어 계산
-test_f1 = f1_score(y_test, y_pred_optimal, zero_division=0)
-print(f"\n테스트 데이터 F1 스코어: {test_f1:.4f}")
+# Top-n% alert 방식의 임계값도 계산 (상위 0.2%)
+top_n_threshold = np.percentile(y_scores, 99.8)
+print(f"\nTop 0.2% Alert Threshold: {top_n_threshold:.4f}")
 
 plt.show()
 
