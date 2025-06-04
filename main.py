@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Input, Dense, LSTM, RepeatVector, Dropout, MultiHeadAttention, LayerNormalization, GlobalAveragePooling1D
+from tensorflow.keras.layers import Input, Dense, LSTM, RepeatVector, Dropout, MultiHeadAttention, LayerNormalization, GlobalAveragePooling1D, GRU, BatchNormalization
 from tensorflow.keras.utils import plot_model
 import streamlit as st
 import pandas as pd
@@ -154,7 +154,7 @@ for process_id, group in csv_data.groupby('Process'):
 # 시퀀스 생성 전에 라벨 분포 확인
 print("라벨 분포:", np.unique(csv_data['label'], return_counts=True))
 
-# 시퀀스 생성
+# 시퀀스 생성 (process별로 자르고 그 안에서 window size로 sliding window 생성)
 X, y = create_sequences(csv_data, window_size=WINDOW_SIZE)
 
 # 시퀀스 생성 후 라벨 분포 확인
@@ -197,8 +197,15 @@ X_test = X_test.reshape(-1, WINDOW_SIZE, X.shape[2])
 X_val = X_val.reshape(-1, WINDOW_SIZE, X.shape[2])
 
 model = Sequential([
-    LSTM(128, input_shape=(X_train.shape[1], X_train.shape[2]), return_sequences=False),
+    LSTM(128, input_shape=(X_train.shape[1], X_train.shape[2]), 
+         return_sequences=True),
+    BatchNormalization(),
+    Dropout(0.2),
+    GRU(64, return_sequences=False),
+    BatchNormalization(),
+    Dropout(0.2),
     Dense(64, activation='relu'),
+    BatchNormalization(),
     Dense(32, activation='relu'),
     Dense(1, activation='sigmoid')
 ])
@@ -212,7 +219,7 @@ model.compile(
 
 early_stopping = EarlyStopping(
     monitor='val_loss',
-    patience=15,  # patience 조정
+    patience=10,  # patience 조정
     restore_best_weights=True,
     verbose=1
 )
@@ -294,11 +301,12 @@ optimal_threshold = thresholds[optimal_idx]
 
 # 최적 임계값으로 예측
 y_pred_optimal = (y_scores >= optimal_threshold).astype(int)
-plot_confusion(y_test, y_pred_optimal, title="Confusion Matrix (PR-AUC Optimal Threshold - Test Data)")
+y_pred_default = (y_scores >= 0.5).astype(int)
+plot_confusion(y_test, y_pred_optimal, title="Confusion Matrix (Optimal Threshold - Test Data)")
+plot_confusion(y_test, y_pred_optimal, title="Confusion Matrix (Threshold 0.5 - Test Data)")
 
 # PR-AUC 점수 계산
 pr_auc = average_precision_score(y_test, y_scores)
-print(f"\nPR-AUC Score: {pr_auc:.4f}")
 print(f"Test Data F1 Score: {f1_score(y_test, y_pred_optimal, zero_division=0):.4f}")
 
 # Top-n% alert 방식의 임계값도 계산 (상위 0.2%)
