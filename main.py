@@ -107,25 +107,25 @@ def create_sequences(df, window_size=10):
     
     return np.array(X), np.array(y)
 
-# Process 단위로 train/test 분할
-def split_by_process(X, y, process_ids, test_size=0.2, stratify=None):
+# Process 단위로 train/test 분할 시 이상 샘플 보장
+def split_by_process(X, y, process_ids, test_size=0.2):
     unique_processes = np.unique(process_ids)
-    
-    # 이상이 있는 Process와 없는 Process를 구분
     anomaly_processes = set()
+    
+    # 이상이 있는 Process 식별
     for i, process_id in enumerate(process_ids):
         if y[i] == 1:
             anomaly_processes.add(process_id)
     
-    # 이상이 있는 Process와 없는 Process를 분리
-    normal_processes = set(unique_processes) - anomaly_processes
-    
-    # 각 그룹에서 test set 크기만큼 선택
+    # 이상 Process의 일부를 test set에 포함
     test_anomaly = set(np.random.choice(list(anomaly_processes), 
-                                      size=int(len(anomaly_processes) * test_size),
+                                      size=max(1, int(len(anomaly_processes) * test_size)),
                                       replace=False))
-    test_normal = set(np.random.choice(list(normal_processes), 
-                                     size=int(len(normal_processes) * test_size),
+    
+    # 나머지 Process 분할
+    remaining_processes = set(unique_processes) - test_anomaly
+    test_normal = set(np.random.choice(list(remaining_processes), 
+                                     size=int(len(remaining_processes) * test_size),
                                      replace=False))
     
     test_processes = test_anomaly | test_normal
@@ -171,8 +171,7 @@ process_ids = np.array(process_ids)
 X_train, X_test, y_train, y_test, train_mask, test_mask = split_by_process(
     X, y, 
     process_ids,
-    test_size=0.2,
-    stratify=y  # 라벨 분포를 고려한 분할
+    test_size=0.2
 )
 
 # validation set도 Process 단위로 분할
@@ -293,21 +292,19 @@ plt.xlabel('Anomaly Score')
 plt.ylabel('Density')
 plt.legend()
 
-# PR-AUC 기반 최적 임계값 찾기
+# Precision-Recall 커브 기반 최적 임계값 찾기
 prec, rec, thresholds = precision_recall_curve(y_test, y_scores)
-f1 = 2 * prec * rec / (prec + rec + 1e-9)
+f1 = 2 * prec * rec / (prec + rec + 1e-9)  # F1-score 계산
 optimal_idx = np.argmax(f1)
-optimal_threshold = thresholds[optimal_idx]
+optimal_threshold_pr = thresholds[optimal_idx]
 
 # 최적 임계값으로 예측
-y_pred_optimal = (y_scores >= optimal_threshold).astype(int)
-y_pred_default = (y_scores >= 0.5).astype(int)
-plot_confusion(y_test, y_pred_optimal, title="Confusion Matrix (Optimal Threshold - Test Data)")
-plot_confusion(y_test, y_pred_optimal, title="Confusion Matrix (Threshold 0.5 - Test Data)")
+y_pred_optimal_pr = (y_scores >= optimal_threshold_pr).astype(int)
 
-# PR-AUC 점수 계산
-pr_auc = average_precision_score(y_test, y_scores)
-print(f"Test Data F1 Score: {f1_score(y_test, y_pred_optimal, zero_division=0):.4f}")
+plot_confusion(y_test, y_pred_optimal_pr, title="Confusion Matrix (Threshold Precision Recall - Test Data)")
+
+
+print(f"Test Data pr F1 Score: {f1_score(y_test, y_pred_optimal_pr, zero_division=0):.4f}")
 
 # Top-n% alert 방식의 임계값도 계산 (상위 0.2%)
 top_n_threshold = np.percentile(y_scores, 99.8)
@@ -337,5 +334,6 @@ prediction = model.predict(new_sequence)[0][0]
 print(f"\n예측 결과:")
 print(f"이상 확률: {prediction*100:.2f}%")
 print(f"정상 확률: {(1-prediction)*100:.2f}%")
-print(f"이상 판정 임계값: {optimal_threshold*100:.2f}%")
-print(f"판정: {'이상' if prediction >= optimal_threshold else '정상'}")
+print(f"이상 판정 임계값: {optimal_threshold_pr*100:.2f}%")
+print(f"판정: {'이상' if prediction >= optimal_threshold_pr else '정상'}")
+
