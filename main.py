@@ -281,8 +281,6 @@ y_scores = model.predict(X_test).flatten()
 # 이상 점수 분포 시각화
 plt.figure(figsize=(12, 5))
 plt.subplot(1, 2, 1)
-sns.kdeplot(data=y_scores[y_test == 0], label='Normal', fill=True, alpha=0.3)
-sns.kdeplot(data=y_scores[y_test == 1], label='Anomaly', fill=True, alpha=0.3)
 plt.title('Anomaly Score Distribution')
 plt.xlabel('Anomaly Score')
 plt.ylabel('Density')
