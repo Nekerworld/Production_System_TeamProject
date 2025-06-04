@@ -71,45 +71,53 @@ def create_sequences(df, window_size=10):
 
     return np.array(X), np.array(y)
 
-X, y = create_sequences(csv_data, window_size=10)
+# 윈도우 크기를 변수로 저장
+WINDOW_SIZE = 10
+X, y = create_sequences(csv_data, window_size=WINDOW_SIZE)
 # 평탄화 (LSTM용 시계열 데이터를 2D로 바꿔야 SMOTE 가능)
 X_flat = X.reshape(X.shape[0], -1)  # (samples, timesteps * features)
-# SMOTE 적용
-smote = BorderlineSMOTE(sampling_strategy='auto', random_state=42)
-X_resampled, y_resampled = smote.fit_resample(X_flat, y)
+
+# train_test_split 적용
+X_train, X_test, y_train, y_test = train_test_split(
+    X_flat, y, test_size=0.2, random_state=42, stratify=y
+)
+
+# BorderlineSMOTE 파라미터 조정
+k_neighbors = min(5, sum(y_train == 1))  # 이상 샘플 수와 5 중 작은 값 사용
+smote = BorderlineSMOTE(sampling_strategy='auto', random_state=42, k_neighbors=k_neighbors)
+X_train, y_train = smote.fit_resample(X_train, y_train)
+
 # 다시 원래 LSTM 입력 형태로 복원
-X_resampled = X_resampled.reshape(-1, X.shape[1], X.shape[2])
+X_train = X_train.reshape(-1, WINDOW_SIZE, X.shape[2])
+X_test = X_test.reshape(-1, WINDOW_SIZE, X.shape[2])
 
 model = Sequential([
-    LSTM(128, input_shape=(X_resampled.shape[1], X_resampled.shape[2]), return_sequences=False),
+    LSTM(128, input_shape=(WINDOW_SIZE, X.shape[2]), return_sequences=False),
     Dense(64, activation='relu'),
-    Dense(32, activation='relu'),
     Dense(1, activation='sigmoid')
 ])
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
 early_stopping = EarlyStopping(
     monitor='val_loss',
-    patience=5,
+    patience=15,
     restore_best_weights=True,
     verbose=1
 )
 
 print('\n===================== LSTM =====================')
 history = model.fit(
-    X_resampled, 
-    y_resampled, 
-    epochs=2, 
-    batch_size=32, 
-    validation_split=0.2, 
+    X_train, 
+    y_train, 
+    epochs=200,  # epochs 증가
+    batch_size=64, 
+    validation_split=0.1, 
     callbacks=[early_stopping],
     verbose=1
 )
 
-# # 기존의 X, y에서 train/test 분리
-# X_train, X_test, y_train, y_test = train_test_split(
-#     X, y, test_size=0.2, random_state=42, stratify=y
-# )
+# 테스트 데이터에 대한 예측
+y_scores = model.predict(X_test).flatten()
 
 # === Autoencoder 기반 ===
 # input_dim = X_train.shape[2]
@@ -184,14 +192,10 @@ def plot_time_series_overlay(y_scores, y_true, timestamps, title="Time Series An
     # 이상 점수 시계열 플롯
     plt.plot(range(len(y_scores)), y_scores, label='Anomaly Score', alpha=0.7, color='blue')
     
-    # 실제 이상 발생 지점 표시 (BorderlineSMOTE로 생성된 샘플 구분)
-    original_anomaly_indices = np.where(y_true == 1)[0][:len(y_scores)]  # 원본 이상 샘플
-    synthetic_anomaly_indices = np.where(y_true == 1)[0][len(y_scores):]  # BorderlineSMOTE로 생성된 샘플
-    
-    plt.scatter(original_anomaly_indices, y_scores[original_anomaly_indices], 
-               color='red', label='Original Anomalies', alpha=0.7, s=100)
-    plt.scatter(synthetic_anomaly_indices, y_scores[synthetic_anomaly_indices], 
-               color='orange', label='Synthetic Anomalies', alpha=0.5, s=50)
+    # 실제 이상 발생 지점 표시
+    anomaly_indices = np.where(y_true == 1)[0]
+    plt.scatter(anomaly_indices, y_scores[anomaly_indices], 
+               color='red', label='Anomalies', alpha=0.7, s=100)
     
     # 임계값 선 추가
     plt.axhline(y=0.5, color='r', linestyle='--', label='Default Threshold (0.5)')
@@ -206,10 +210,10 @@ def plot_time_series_overlay(y_scores, y_true, timestamps, title="Time Series An
     plt.tight_layout()
     return plt
 
-def plot_borderline_analysis(X_flat, y, y_scores, title_prefix="BorderlineSMOTE Analysis"):
+def plot_borderline_analysis(X_flat, y, y_scores, title_prefix="Data Analysis"):
     plt.figure(figsize=(15, 10))
     
-    # 1. BorderlineSMOTE의 경계선 영역 시각화
+    # 1. 데이터 분포 시각화
     plt.subplot(2, 2, 1)
     pca = PCA(n_components=2)
     X_2d = pca.fit_transform(X_flat)
@@ -218,41 +222,18 @@ def plot_borderline_analysis(X_flat, y, y_scores, title_prefix="BorderlineSMOTE 
     normal_mask = y == 0
     anomaly_mask = y == 1
     
-    # 경계선 영역 계산 (KNN 기반)
-    nbrs = NearestNeighbors(n_neighbors=5).fit(X_2d[normal_mask])
-    distances, _ = nbrs.kneighbors(X_2d)
-    boundary_mask = np.percentile(distances, 75) < distances[:, 0]  # 상위 25% 거리에 있는 점들을 경계선으로 간주
-    
     plt.scatter(X_2d[normal_mask, 0], X_2d[normal_mask, 1], 
                c='blue', label='Normal', alpha=0.3)
     plt.scatter(X_2d[anomaly_mask, 0], X_2d[anomaly_mask, 1], 
                c='red', label='Anomaly', alpha=0.3)
-    plt.scatter(X_2d[boundary_mask, 0], X_2d[boundary_mask, 1], 
-               c='green', label='Borderline Region', alpha=0.1)
-    plt.title(f'{title_prefix} - Borderline Region')
+    plt.title(f'{title_prefix} - Data Distribution')
     plt.legend()
     plt.grid(True, alpha=0.3)
     
-    # 2. 합성 샘플 생성 과정 분석
+    # 2. 이상 점수 분포
     plt.subplot(2, 2, 2)
-    tsne = TSNE(n_components=2, random_state=42)
-    X_tsne = tsne.fit_transform(X_flat)
-    
-    plt.scatter(X_tsne[normal_mask, 0], X_tsne[normal_mask, 1], 
-               c='blue', label='Normal', alpha=0.3)
-    plt.scatter(X_tsne[anomaly_mask, 0], X_tsne[anomaly_mask, 1], 
-               c='red', label='Anomaly', alpha=0.3)
-    plt.title(f'{title_prefix} - t-SNE Visualization')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    # 3. 원본/합성 샘플별 성능 지표
-    plt.subplot(2, 2, 3)
-    original_scores = y_scores[:len(y)]
-    synthetic_scores = y_scores[len(y):]
-    
-    sns.kdeplot(data=original_scores, label='Original Samples', fill=True, alpha=0.3)
-    sns.kdeplot(data=synthetic_scores, label='Synthetic Samples', fill=True, alpha=0.3)
+    sns.kdeplot(data=y_scores[y == 0], label='Normal', fill=True, alpha=0.3)
+    sns.kdeplot(data=y_scores[y == 1], label='Anomaly', fill=True, alpha=0.3)
     plt.axvline(x=0.5, color='r', linestyle='--', label='Default Threshold')
     plt.title(f'{title_prefix} - Score Distribution')
     plt.xlabel('Anomaly Score')
@@ -260,35 +241,28 @@ def plot_borderline_analysis(X_flat, y, y_scores, title_prefix="BorderlineSMOTE 
     plt.legend()
     plt.grid(True, alpha=0.3)
     
-    # 4. 성능 지표 비교
-    plt.subplot(2, 2, 4)
+    # 3. 성능 지표
+    plt.subplot(2, 2, 3)
     metrics = {
-        'Original': {
-            'Precision': precision_score(y[:len(y)], original_scores > 0.5),
-            'Recall': recall_score(y[:len(y)], original_scores > 0.5),
-            'F1': f1_score(y[:len(y)], original_scores > 0.5)
-        },
-        'Synthetic': {
-            'Precision': precision_score(y_resampled[len(y):], synthetic_scores > 0.5),
-            'Recall': recall_score(y_resampled[len(y):], synthetic_scores > 0.5),
-            'F1': f1_score(y_resampled[len(y):], synthetic_scores > 0.5)
+        'Metrics': {
+            'Precision': precision_score(y, y_scores > 0.5, zero_division=0),
+            'Recall': recall_score(y, y_scores > 0.5, zero_division=0),
+            'F1': f1_score(y, y_scores > 0.5, zero_division=0)
         }
     }
     
     x = np.arange(3)
     width = 0.35
     
-    plt.bar(x - width/2, list(metrics['Original'].values()), width, label='Original')
-    plt.bar(x + width/2, list(metrics['Synthetic'].values()), width, label='Synthetic')
+    plt.bar(x, list(metrics['Metrics'].values()), width)
     plt.xticks(x, ['Precision', 'Recall', 'F1 Score'])
     plt.title(f'{title_prefix} - Performance Metrics')
-    plt.legend()
     plt.grid(True, alpha=0.3)
     
     plt.tight_layout()
     return plt
 
-def plot_detailed_borderline_analysis(X_flat, y, y_scores, title_prefix="Detailed BorderlineSMOTE Analysis"):
+def plot_detailed_borderline_analysis(X_flat, y, y_scores, title_prefix="Detailed Analysis"):
     plt.figure(figsize=(20, 15))
     
     # 1. 경계선 영역의 동적 임계값 분석
@@ -311,44 +285,30 @@ def plot_detailed_borderline_analysis(X_flat, y, y_scores, title_prefix="Detaile
     plt.legend()
     plt.grid(True, alpha=0.3)
     
-    # 2. 합성 샘플 생성 과정의 단계별 시각화
+    # 2. 데이터 클러스터링 분석
     plt.subplot(3, 2, 2)
     from sklearn.cluster import KMeans
     kmeans = KMeans(n_clusters=3, random_state=42)
     cluster_labels = kmeans.fit_predict(X_flat)
     
-    # 각 클러스터의 중심점과 합성 샘플 생성 방향 시각화
+    # 각 클러스터의 중심점 시각화
     centers = kmeans.cluster_centers_
     plt.scatter(X_flat[:, 0], X_flat[:, 1], c=cluster_labels, cmap='viridis', alpha=0.3)
     plt.scatter(centers[:, 0], centers[:, 1], c='red', marker='x', s=200, label='Cluster Centers')
     
-    # 합성 샘플 생성 방향 표시
-    for i in range(len(centers)):
-        for j in range(i+1, len(centers)):
-            plt.arrow(centers[i, 0], centers[i, 1],
-                     centers[j, 0] - centers[i, 0],
-                     centers[j, 1] - centers[i, 1],
-                     color='red', alpha=0.3, head_width=0.1)
-    
-    plt.title(f'{title_prefix} - Synthetic Sample Generation Process')
+    plt.title(f'{title_prefix} - Cluster Analysis')
     plt.legend()
     plt.grid(True, alpha=0.3)
     
-    # 3. 원본/합성 샘플별 상세 성능 지표
+    # 3. Precision-Recall 커브
     plt.subplot(3, 2, 3)
     from sklearn.metrics import precision_recall_curve, average_precision_score
     
-    # 원본 샘플의 PR 커브
-    precision_orig, recall_orig, _ = precision_recall_curve(y[:len(y)], y_scores[:len(y)])
-    ap_orig = average_precision_score(y[:len(y)], y_scores[:len(y)])
+    precision, recall, _ = precision_recall_curve(y, y_scores)
+    ap = average_precision_score(y, y_scores)
     
-    # 합성 샘플의 PR 커브
-    precision_synth, recall_synth, _ = precision_recall_curve(y_resampled[len(y):], y_scores[len(y):])
-    ap_synth = average_precision_score(y_resampled[len(y):], y_scores[len(y):])
-    
-    plt.plot(recall_orig, precision_orig, label=f'Original (AP={ap_orig:.2f})')
-    plt.plot(recall_synth, precision_synth, label=f'Synthetic (AP={ap_synth:.2f})')
-    plt.title(f'{title_prefix} - Precision-Recall Curves')
+    plt.plot(recall, precision, label=f'AP={ap:.2f}')
+    plt.title(f'{title_prefix} - Precision-Recall Curve')
     plt.xlabel('Recall')
     plt.ylabel('Precision')
     plt.legend()
@@ -357,24 +317,16 @@ def plot_detailed_borderline_analysis(X_flat, y, y_scores, title_prefix="Detaile
     # 4. 임계값별 성능 변화
     plt.subplot(3, 2, 4)
     thresholds = np.linspace(0, 1, 100)
-    metrics_orig = {'precision': [], 'recall': [], 'f1': []}
-    metrics_synth = {'precision': [], 'recall': [], 'f1': []}
+    metrics = {'precision': [], 'recall': [], 'f1': []}
     
     for threshold in thresholds:
-        y_pred_orig = (y_scores[:len(y)] >= threshold).astype(int)
-        y_pred_synth = (y_scores[len(y):] >= threshold).astype(int)
-        
-        metrics_orig['precision'].append(precision_score(y[:len(y)], y_pred_orig))
-        metrics_orig['recall'].append(recall_score(y[:len(y)], y_pred_orig))
-        metrics_orig['f1'].append(f1_score(y[:len(y)], y_pred_orig))
-        
-        metrics_synth['precision'].append(precision_score(y_resampled[len(y):], y_pred_synth))
-        metrics_synth['recall'].append(recall_score(y_resampled[len(y):], y_pred_synth))
-        metrics_synth['f1'].append(f1_score(y_resampled[len(y):], y_pred_synth))
+        y_pred = (y_scores >= threshold).astype(int)
+        metrics['precision'].append(precision_score(y, y_pred, zero_division=0))
+        metrics['recall'].append(recall_score(y, y_pred, zero_division=0))
+        metrics['f1'].append(f1_score(y, y_pred, zero_division=0))
     
     for metric in ['precision', 'recall', 'f1']:
-        plt.plot(thresholds, metrics_orig[metric], label=f'Original {metric.capitalize()}')
-        plt.plot(thresholds, metrics_synth[metric], label=f'Synthetic {metric.capitalize()}')
+        plt.plot(thresholds, metrics[metric], label=metric.capitalize())
     
     plt.title(f'{title_prefix} - Performance Metrics vs Threshold')
     plt.xlabel('Threshold')
@@ -399,23 +351,19 @@ def plot_detailed_borderline_analysis(X_flat, y, y_scores, title_prefix="Detaile
     plt.subplot(3, 2, 6)
     from scipy import stats
     
-    # 원본/합성 샘플의 이상 점수 분포 통계
-    orig_stats = stats.describe(y_scores[:len(y)])
-    synth_stats = stats.describe(y_scores[len(y):])
+    # 이상 점수 분포 통계
+    score_stats = stats.describe(y_scores)
     
     stats_data = {
-        'Original': [orig_stats.mean, orig_stats.variance, orig_stats.skewness, orig_stats.kurtosis],
-        'Synthetic': [synth_stats.mean, synth_stats.variance, synth_stats.skewness, synth_stats.kurtosis]
+        'Statistics': [score_stats.mean, score_stats.variance, score_stats.skewness, score_stats.kurtosis]
     }
     
     x = np.arange(4)
     width = 0.35
     
-    plt.bar(x - width/2, stats_data['Original'], width, label='Original')
-    plt.bar(x + width/2, stats_data['Synthetic'], width, label='Synthetic')
+    plt.bar(x, stats_data['Statistics'], width)
     plt.xticks(x, ['Mean', 'Variance', 'Skewness', 'Kurtosis'])
     plt.title(f'{title_prefix} - Statistical Analysis')
-    plt.legend()
     plt.grid(True, alpha=0.3)
     
     plt.tight_layout()
@@ -424,31 +372,27 @@ def plot_detailed_borderline_analysis(X_flat, y, y_scores, title_prefix="Detaile
 # LSTM
 plot_history(history, title_prefix="LSTM")
 
-# 연속적 이상 점수화 및 ROC 커브 분석
-y_scores = model.predict(X_resampled).flatten()
-
 # Time Series Overlay 시각화
-plot_time_series_overlay(y_scores, y_resampled, None, title="LSTM Anomaly Detection Over Time (BorderlineSMOTE)")
+plot_time_series_overlay(y_scores, y_test, None, title="LSTM Anomaly Detection Over Time (Test Data)")
 
-# BorderlineSMOTE 분석 시각화
-plot_borderline_analysis(X_flat, y, y_scores, title_prefix="BorderlineSMOTE Analysis")
+# 데이터 분석 시각화
+plot_borderline_analysis(X_test.reshape(X_test.shape[0], -1), y_test, y_scores, title_prefix="Test Data Analysis")
 
-# 상세 BorderlineSMOTE 분석 시각화
-plot_detailed_borderline_analysis(X_flat, y, y_scores, title_prefix="Detailed BorderlineSMOTE Analysis")
+# 상세 데이터 분석 시각화
+plot_detailed_borderline_analysis(X_test.reshape(X_test.shape[0], -1), y_test, y_scores, title_prefix="Detailed Test Data Analysis")
 
 # 이상 점수 분포 시각화
 plt.figure(figsize=(12, 5))
 plt.subplot(1, 2, 1)
-sns.kdeplot(data=y_scores[y_resampled == 0], label='Normal', fill=True, alpha=0.3)
-sns.kdeplot(data=y_scores[y_resampled == 1][:len(y)], label='Original Anomalies', fill=True, alpha=0.3)
-sns.kdeplot(data=y_scores[y_resampled == 1][len(y):], label='Synthetic Anomalies', fill=True, alpha=0.3)
-plt.title('Anomaly Score Distribution (BorderlineSMOTE)')
+sns.kdeplot(data=y_scores[y_test == 0], label='Normal', fill=True, alpha=0.3)
+sns.kdeplot(data=y_scores[y_test == 1], label='Anomaly', fill=True, alpha=0.3)
+plt.title('Anomaly Score Distribution (Test Data)')
 plt.xlabel('Anomaly Score')
 plt.ylabel('Density')
 plt.legend()
 
 # ROC 커브 및 최적 임계값 계산
-fpr, tpr, thresholds = roc_curve(y_resampled, y_scores)
+fpr, tpr, thresholds = roc_curve(y_test, y_scores)
 roc_auc = auc(fpr, tpr)
 
 # 최적 임계값 찾기 (Youden's J statistic)
@@ -464,19 +408,19 @@ plt.xlim([0.0, 1.0])
 plt.ylim([0.0, 1.05])
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
-plt.title('ROC Curve')
+plt.title('ROC Curve (Test Data)')
 plt.grid()
 plt.legend(loc="lower right")
 plt.tight_layout()
 
 # 최적 임계값으로 예측
 y_pred_optimal = (y_scores >= optimal_threshold).astype(int)
-plot_confusion(y_resampled, y_pred_optimal, title="Confusion Matrix (Optimal Threshold)")
+plot_confusion(y_test, y_pred_optimal, title="Confusion Matrix (Optimal Threshold - Test Data)")
 
 # 기존 0.5 임계값과 비교
 y_pred_default = (y_scores >= 0.5).astype(int)
-plot_confusion(y_resampled, y_pred_default, title="Confusion Matrix (Default Threshold 0.5)")
+plot_confusion(y_test, y_pred_default, title="Confusion Matrix (Default Threshold 0.5 - Test Data)")
 
-print(f"F1 Score: {f1_score(y_resampled, y_pred_optimal)}")
+print(f"Test Data F1 Score: {f1_score(y_test, y_pred_optimal, zero_division=0)}")
 
 plt.show()
