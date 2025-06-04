@@ -100,7 +100,7 @@ model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy']
 
 early_stopping = EarlyStopping(
     monitor='val_loss',
-    patience=15,
+    patience=10,
     restore_best_weights=True,
     verbose=1
 )
@@ -166,111 +166,6 @@ def plot_confusion(y_true, y_pred, title="Confusion Matrix"):
     plt.title(title)
     print(classification_report(y_true, y_pred, target_names=["Normal", "Anomaly"]))
 
-    plt.figure(figsize=(20, 15))
-    
-    # 1. 경계선 영역의 동적 임계값 분석
-    plt.subplot(3, 2, 1)
-    from sklearn.neighbors import LocalOutlierFactor
-    lof = LocalOutlierFactor(n_neighbors=20, contamination=0.1)
-    lof_scores = -lof.fit_predict(X_flat)  # 음수 값을 양수로 변환
-    
-    # 경계선 영역의 동적 임계값 계산
-    threshold_percentiles = [50, 75, 90, 95]
-    thresholds = [np.percentile(lof_scores, p) for p in threshold_percentiles]
-    
-    plt.hist(lof_scores, bins=50, alpha=0.5, label='Score Distribution')
-    for t, p in zip(thresholds, threshold_percentiles):
-        plt.axvline(t, color='r', linestyle='--', 
-                   label=f'{p}th percentile: {t:.2f}')
-    plt.title(f'{title_prefix} - Dynamic Boundary Thresholds')
-    plt.xlabel('LOF Score')
-    plt.ylabel('Frequency')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    # 2. 데이터 클러스터링 분석
-    plt.subplot(3, 2, 2)
-    from sklearn.cluster import KMeans
-    kmeans = KMeans(n_clusters=3, random_state=42)
-    cluster_labels = kmeans.fit_predict(X_flat)
-    
-    # 각 클러스터의 중심점 시각화
-    centers = kmeans.cluster_centers_
-    plt.scatter(X_flat[:, 0], X_flat[:, 1], c=cluster_labels, cmap='viridis', alpha=0.3)
-    plt.scatter(centers[:, 0], centers[:, 1], c='red', marker='x', s=200, label='Cluster Centers')
-    
-    plt.title(f'{title_prefix} - Cluster Analysis')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    # 3. Precision-Recall 커브
-    plt.subplot(3, 2, 3)
-    from sklearn.metrics import precision_recall_curve, average_precision_score
-    
-    precision, recall, _ = precision_recall_curve(y, y_scores)
-    ap = average_precision_score(y, y_scores)
-    
-    plt.plot(recall, precision, label=f'AP={ap:.2f}')
-    plt.title(f'{title_prefix} - Precision-Recall Curve')
-    plt.xlabel('Recall')
-    plt.ylabel('Precision')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    # 4. 임계값별 성능 변화
-    plt.subplot(3, 2, 4)
-    thresholds = np.linspace(0, 1, 100)
-    metrics = {'precision': [], 'recall': [], 'f1': []}
-    
-    for threshold in thresholds:
-        y_pred = (y_scores >= threshold).astype(int)
-        metrics['precision'].append(precision_score(y, y_pred, zero_division=0))
-        metrics['recall'].append(recall_score(y, y_pred, zero_division=0))
-        metrics['f1'].append(f1_score(y, y_pred, zero_division=0))
-    
-    for metric in ['precision', 'recall', 'f1']:
-        plt.plot(thresholds, metrics[metric], label=metric.capitalize())
-    
-    plt.title(f'{title_prefix} - Performance Metrics vs Threshold')
-    plt.xlabel('Threshold')
-    plt.ylabel('Score')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    # 5. 특성 중요도 분석
-    plt.subplot(3, 2, 5)
-    from sklearn.ensemble import RandomForestClassifier
-    rf = RandomForestClassifier(n_estimators=100, random_state=42)
-    rf.fit(X_flat, y)
-    feature_importance = rf.feature_importances_
-    
-    plt.bar(range(len(feature_importance)), feature_importance)
-    plt.title(f'{title_prefix} - Feature Importance')
-    plt.xlabel('Feature Index')
-    plt.ylabel('Importance')
-    plt.grid(True, alpha=0.3)
-    
-    # 6. 이상 점수 분포의 통계적 분석
-    plt.subplot(3, 2, 6)
-    from scipy import stats
-    
-    # 이상 점수 분포 통계
-    score_stats = stats.describe(y_scores)
-    
-    stats_data = {
-        'Statistics': [score_stats.mean, score_stats.variance, score_stats.skewness, score_stats.kurtosis]
-    }
-    
-    x = np.arange(4)
-    width = 0.35
-    
-    plt.bar(x, stats_data['Statistics'], width)
-    plt.xticks(x, ['Mean', 'Variance', 'Skewness', 'Kurtosis'])
-    plt.title(f'{title_prefix} - Statistical Analysis')
-    plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    return plt
 # ROC 커브 및 최적 임계값 계산
 fpr, tpr, thresholds = roc_curve(y_test, y_scores)
 roc_auc = auc(fpr, tpr)
@@ -288,14 +183,6 @@ plot_confusion(y_test, y_pred_default, title="Confusion Matrix (Default Threshol
 
 print(f"Test Data F1 Score: {f1_score(y_test, y_pred_optimal, zero_division=0)}")
 
-# 최적 임계값으로 예측
-y_pred_optimal = (y_scores >= optimal_threshold).astype(int)
-plot_confusion(y_test, y_pred_optimal, title="Confusion Matrix (Optimal Threshold - Test Data)")
-
-# 기존 0.5 임계값과 비교
-y_pred_default = (y_scores >= 0.5).astype(int)
-plot_confusion(y_test, y_pred_default, title="Confusion Matrix (Default Threshold 0.5 - Test Data)")
-
 # 테스트 데이터 F1 스코어 계산
 test_f1 = f1_score(y_test, y_pred_optimal, zero_division=0)
 print(f"\n테스트 데이터 F1 스코어: {test_f1:.4f}")
@@ -304,22 +191,23 @@ plt.show()
 
 # 새로운 데이터 예측
 print("\n새로운 데이터 예측을 시작합니다.")
-print("온도와 전류 값을 순서대로 입력해주세요.")
+print("현재 시점의 온도와 전류 값을 입력해주세요.")
 
-# 새로운 데이터 입력 받기
-new_data = []
-for i in range(WINDOW_SIZE):
-    print(f"\n{WINDOW_SIZE-i}번째 데이터 입력:")
-    temp = float(input("온도 값을 입력하세요: "))
-    current = float(input("전류 값을 입력하세요: "))
-    new_data.append([temp, current])
+# 현재 시점의 데이터 입력 받기
+current_temp = float(input("현재 온도 값을 입력하세요: "))
+current_current = float(input("현재 전류 값을 입력하세요: "))
 
-# 입력 데이터를 모델 입력 형태로 변환
-new_data = np.array(new_data)
-new_data = new_data.reshape(1, WINDOW_SIZE, 2)  # (1, window_size, features)
+# 마지막 샘플의 마지막 9개 시점 데이터 추출
+last_sample = X_test[-1]  # shape: (10, 2)
+last_9_data = last_sample[-9:, :]  # shape: (9, 2)
+current_data = np.array([[current_temp, current_current]])  # shape: (1, 2)
+
+# 10개 시점 데이터로 시퀀스 생성
+new_sequence = np.vstack([last_9_data, current_data])  # shape: (10, 2)
+new_sequence = new_sequence.reshape(1, WINDOW_SIZE, 2)  # (1, 10, 2)
 
 # 예측
-prediction = model.predict(new_data)[0][0]
+prediction = model.predict(new_sequence)[0][0]
 print(f"\n예측 결과:")
 print(f"이상 확률: {prediction*100:.2f}%")
 print(f"정상 확률: {(1-prediction)*100:.2f}%")
