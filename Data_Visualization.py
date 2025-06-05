@@ -11,26 +11,56 @@ plt.rcParams['axes.unicode_minus'] = False
 sns.set(font='Malgun Gothic')
 sns.set_style("whitegrid")
 
-# 데이터 경로 설정
+# 로컬에서 실행시 경로 알맞게 설정해주세요
 five_process_180sec = r'C:\\YS\\TUK\\S4E1\\생산시스템구축실무\\TeamProject\\Production_System_TeamProject\\data\\장비이상 조기탐지\\5공정_180sec'
 
 # 모든 csv 파일 목록을 가져옴 (Error Lot 제외)
 all_csv_files = glob(os.path.join(five_process_180sec, '*.csv'))
 csv_files = [f for f in all_csv_files if 'Error Lot list' not in os.path.basename(f)]
 
-# 병합할 데이터프레임 리스트
+# ① 에러 Lot 리스트 읽기
+error_df = pd.read_csv(os.path.join(five_process_180sec, 'Error Lot list.csv'))
+# ② {날짜(str): {에러 Process, …}} 형태의 딕셔너리 생성
+error_dict = {}
+for _, row in error_df.iterrows():
+    date = str(row.iloc[0]).strip()
+    process_set = set(row.iloc[1:].dropna().astype(int))
+    if len(process_set) > 0:
+        error_dict[date] = process_set
+
 dataframes = []
 
 for file in csv_files:
     df = pd.read_csv(file)
-    # 날짜 및 시간 컬럼 병합
+
+    # 2-1) 한글 '오전/오후' → AM/PM 변환 + 24시간제로 통일
+    df['Time'] = (
+        df['Time']
+        .str.replace('오전', 'AM')
+        .str.replace('오후', 'PM')
+    )
+    df['Time'] = pd.to_datetime(df['Time'], format='%p %I:%M:%S.%f').dt.strftime('%H:%M:%S.%f')
+
+    # 2-2) 날짜·시간 결합
     df['datetime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'], errors='coerce')
-    # 파일명을 기준으로 'source_file' 컬럼 생성
+
+    # 2-3) 원본 파일명 보존(선택)
     df['source_file'] = os.path.basename(file)
+
+    # 2-4) Index 컬럼이 실수형으로 읽히는 경우 대비 → int 변환
+    df['Index'] = df['Index'].astype(int)
+
+    # 2-5) ***vectorized*** 방식으로 is_anomaly 생성 (Process 기반)
+    df['is_anomaly'] = 0  # 기본값
+    for d, process_set in error_dict.items():
+        mask = (df['Date'] == d) & (df['Process'].isin(process_set))
+        df.loc[mask, 'is_anomaly'] = 1
+
+    # 2-6) 리스트에 적재
     dataframes.append(df)
     
 five_process_180sec_merged = pd.concat(dataframes, ignore_index=True)
-five_process_180sec_merged.sort_values(by='datetime', inplace=True)
+five_process_180sec_merged.sort_values('datetime', inplace=True)
 five_process_180sec_merged.reset_index(drop=True, inplace=True)
 five_process_180sec_error_lot = pd.read_csv(os.path.join(five_process_180sec, 'Error Lot list.csv'))
 
