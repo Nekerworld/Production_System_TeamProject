@@ -26,20 +26,20 @@ csv_files = [f for f in all_csv_files if 'Error Lot list' not in os.path.basenam
 
 # ① 에러 Lot 리스트 읽기
 error_df = pd.read_csv(os.path.join(five_process_180sec, 'Error Lot list.csv'))
-# ② {날짜(str): {에러 Index, …}} 형태의 딕셔너리 생성
+# ② {날짜(str): {에러 Process, …}} 형태의 딕셔너리 생성
 error_dict = {}
 for _, row in error_df.iterrows():
-    date = str(row.iloc[0]).strip()               # '2021-09-06' …
-    idx_set = set(row.iloc[1:].dropna().astype(int))
-    if len(idx_set) > 0:
-        error_dict[date] = idx_set                # {'2021-09-06': {32,33,20,…}, …}
+    date = str(row.iloc[0]).strip()
+    process_set = set(row.iloc[1:].dropna().astype(int))
+    if len(process_set) > 0:
+        error_dict[date] = process_set
 
 dataframes = []
 
 for file in csv_files:
     df = pd.read_csv(file)
 
-    # 2-1) 한글 '오전/오후' → AM/PM 변환 + 24시간제로 통일
+    # 2-1) 한글 '오전/오후' → AM/PM 변환 + 24시간제로 통일
     df['Time'] = (
         df['Time']
         .str.replace('오전', 'AM')
@@ -56,10 +56,10 @@ for file in csv_files:
     # 2-4) Index 컬럼이 실수형으로 읽히는 경우 대비 → int 변환
     df['Index'] = df['Index'].astype(int)
 
-    # 2-5) ***vectorized*** 방식으로 is_anomaly 생성
+    # 2-5) ***vectorized*** 방식으로 is_anomaly 생성 (Process 기반)
     df['is_anomaly'] = 0  # 기본값
-    for d, idx_set in error_dict.items():
-        mask = (df['Date'] == d) & (df['Index'].isin(idx_set))
+    for d, process_set in error_dict.items():
+        mask = (df['Date'] == d) & (df['Process'].isin(process_set))
         df.loc[mask, 'is_anomaly'] = 1
 
     # 2-6) 리스트에 적재
