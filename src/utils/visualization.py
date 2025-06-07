@@ -12,6 +12,7 @@ import seaborn as sns
 from datetime import datetime
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import plotly.express as px
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -179,6 +180,144 @@ class AnomalyVisualizer:
             logger.error(f"이상치 탐지 결과 시각화 실패: {str(e)}")
             raise
     
+    def plot_realtime_data(self,
+                          data: pd.DataFrame,
+                          window_size: int = 100,
+                          save: bool = True) -> None:
+        """
+        실시간 데이터를 시각화합니다.
+        
+        Args:
+            data (pd.DataFrame): 실시간 데이터
+            window_size (int): 표시할 데이터 포인트 수
+            save (bool): 그래프 저장 여부
+        """
+        try:
+            # 최근 데이터만 선택
+            recent_data = data.tail(window_size)
+            
+            # Plotly를 사용한 인터랙티브 시각화
+            fig = make_subplots(rows=2, cols=1,
+                              shared_xaxes=True,
+                              vertical_spacing=0.05,
+                              subplot_titles=('Temperature', 'Current'))
+            
+            # 온도 데이터
+            fig.add_trace(
+                go.Scatter(x=recent_data['datetime'], y=recent_data['Temp'],
+                          name='Temperature', line=dict(color='blue')),
+                row=1, col=1
+            )
+            
+            # 전류 데이터
+            fig.add_trace(
+                go.Scatter(x=recent_data['datetime'], y=recent_data['Current'],
+                          name='Current', line=dict(color='green')),
+                row=2, col=1
+            )
+            
+            # 레이아웃 설정
+            fig.update_layout(
+                height=800,
+                showlegend=True,
+                title_text="Real-time Sensor Data",
+                xaxis_title="Time",
+                yaxis_title="Value"
+            )
+            
+            if save:
+                fig.write_html(os.path.join(self.output_dir, 'realtime_data.html'))
+            else:
+                fig.show()
+                
+            logger.info("실시간 데이터 시각화 완료")
+            
+        except Exception as e:
+            logger.error(f"실시간 데이터 시각화 실패: {str(e)}")
+            raise
+    
+    def plot_prediction_results(self,
+                              data: pd.DataFrame,
+                              predictions: np.ndarray,
+                              true_labels: Optional[np.ndarray] = None,
+                              threshold: float = 0.5,
+                              save: bool = True) -> None:
+        """
+        예측 결과를 시각화합니다.
+        
+        Args:
+            data (pd.DataFrame): 원본 데이터
+            predictions (np.ndarray): 예측 확률
+            true_labels (Optional[np.ndarray]): 실제 레이블
+            threshold (float): 이상치 판단 임계값
+            save (bool): 그래프 저장 여부
+        """
+        try:
+            # Plotly를 사용한 인터랙티브 시각화
+            fig = make_subplots(rows=4, cols=1,
+                              shared_xaxes=True,
+                              vertical_spacing=0.05,
+                              subplot_titles=('Temperature', 'Current', 
+                                            'Anomaly Probability', 'Prediction vs Actual'))
+            
+            # 온도 데이터
+            fig.add_trace(
+                go.Scatter(x=data['datetime'], y=data['Temp'],
+                          name='Temperature', line=dict(color='blue')),
+                row=1, col=1
+            )
+            
+            # 전류 데이터
+            fig.add_trace(
+                go.Scatter(x=data['datetime'], y=data['Current'],
+                          name='Current', line=dict(color='green')),
+                row=2, col=1
+            )
+            
+            # 이상치 확률
+            fig.add_trace(
+                go.Scatter(x=data['datetime'], y=predictions,
+                          name='Anomaly Probability', line=dict(color='red')),
+                row=3, col=1
+            )
+            
+            # 임계값 선
+            fig.add_hline(y=threshold, line_dash="dash", line_color="red",
+                         annotation_text="Threshold", row=3, col=1)
+            
+            # 예측 vs 실제
+            pred_labels = (predictions >= threshold).astype(int)
+            fig.add_trace(
+                go.Scatter(x=data['datetime'], y=pred_labels,
+                          name='Predicted', line=dict(color='red')),
+                row=4, col=1
+            )
+            
+            if true_labels is not None:
+                fig.add_trace(
+                    go.Scatter(x=data['datetime'], y=true_labels,
+                              name='Actual', line=dict(color='blue')),
+                    row=4, col=1
+                )
+            
+            # 레이아웃 설정
+            fig.update_layout(
+                height=1200,
+                showlegend=True,
+                title_text="Anomaly Detection Results"
+            )
+            
+            if save:
+                fig.write_html(os.path.join(self.output_dir, 'prediction_results.html'))
+            else:
+                fig.show()
+                
+            logger.info("예측 결과 시각화 완료")
+            
+        except Exception as e:
+            logger.error(f"예측 결과 시각화 실패: {str(e)}")
+            raise
+    
     def plot_performance_metrics(self,
                                metrics: Dict[str, float],
                                save: bool = True) -> None:
@@ -195,31 +334,90 @@ class AnomalyVisualizer:
             values = [metrics['accuracy'], metrics['precision'],
                      metrics['recall'], metrics['f1_score']]
             
-            # 막대 그래프 생성
-            plt.figure(figsize=(10, 6))
-            bars = plt.bar(labels, values)
+            # Plotly를 사용한 인터랙티브 시각화
+            fig = go.Figure()
             
-            # 값 표시
-            for bar in bars:
-                height = bar.get_height()
-                plt.text(bar.get_x() + bar.get_width()/2., height,
-                        f'{height:.3f}',
-                        ha='center', va='bottom')
+            # 막대 그래프
+            fig.add_trace(go.Bar(
+                x=labels,
+                y=values,
+                text=[f'{v:.3f}' for v in values],
+                textposition='auto',
+                marker_color=['blue', 'green', 'orange', 'red']
+            ))
             
-            plt.title('Model Performance Metrics')
-            plt.ylim(0, 1.1)
-            plt.grid(True, axis='y', linestyle='--', alpha=0.7)
+            # 레이아웃 설정
+            fig.update_layout(
+                title='Model Performance Metrics',
+                yaxis=dict(
+                    title='Score',
+                    range=[0, 1.1]
+                ),
+                showlegend=False,
+                height=600
+            )
             
             if save:
-                plt.savefig(os.path.join(self.output_dir, 'performance_metrics.png'))
-                plt.close()
+                fig.write_html(os.path.join(self.output_dir, 'performance_metrics.html'))
             else:
-                plt.show()
+                fig.show()
                 
             logger.info("성능 지표 시각화 완료")
             
         except Exception as e:
             logger.error(f"성능 지표 시각화 실패: {str(e)}")
+            raise
+    
+    def plot_roc_curve(self,
+                      fpr: np.ndarray,
+                      tpr: np.ndarray,
+                      auc: float,
+                      save: bool = True) -> None:
+        """
+        ROC 곡선을 시각화합니다.
+        
+        Args:
+            fpr (np.ndarray): False Positive Rate
+            tpr (np.ndarray): True Positive Rate
+            auc (float): AUC 점수
+            save (bool): 그래프 저장 여부
+        """
+        try:
+            # Plotly를 사용한 인터랙티브 시각화
+            fig = go.Figure()
+            
+            # ROC 곡선
+            fig.add_trace(go.Scatter(
+                x=fpr, y=tpr,
+                name=f'ROC curve (AUC = {auc:.3f})',
+                line=dict(color='blue')
+            ))
+            
+            # 대각선
+            fig.add_trace(go.Scatter(
+                x=[0, 1], y=[0, 1],
+                name='Random',
+                line=dict(color='red', dash='dash')
+            ))
+            
+            # 레이아웃 설정
+            fig.update_layout(
+                title='Receiver Operating Characteristic (ROC) Curve',
+                xaxis_title='False Positive Rate',
+                yaxis_title='True Positive Rate',
+                showlegend=True,
+                height=600
+            )
+            
+            if save:
+                fig.write_html(os.path.join(self.output_dir, 'roc_curve.html'))
+            else:
+                fig.show()
+                
+            logger.info("ROC 곡선 시각화 완료")
+            
+        except Exception as e:
+            logger.error(f"ROC 곡선 시각화 실패: {str(e)}")
             raise
 
 def create_visualizer(output_dir: str = 'results') -> AnomalyVisualizer:
@@ -260,6 +458,19 @@ if __name__ == "__main__":
     # predictions = np.random.random(100)
     # visualizer.plot_anomaly_detection(data, predictions)
     
+    # # 실시간 데이터 시각화 예시
+    # data = pd.DataFrame({
+    #     'datetime': pd.date_range(start='2024-01-01', periods=100, freq='1min'),
+    #     'Temp': np.random.normal(25, 2, 100),
+    #     'Current': np.random.normal(1, 0.2, 100)
+    # })
+    # visualizer.plot_realtime_data(data)
+    
+    # # 예측 결과 시각화 예시
+    # predictions = np.random.random(100)
+    # true_labels = np.random.choice([0, 1], 100, p=[0.9, 0.1])
+    # visualizer.plot_prediction_results(data, predictions, true_labels)
+    
     # # 성능 지표 시각화 예시
     # metrics = {
     #     'accuracy': 0.85,
@@ -268,3 +479,9 @@ if __name__ == "__main__":
     #     'f1_score': 0.85
     # }
     # visualizer.plot_performance_metrics(metrics)
+    
+    # # ROC 곡선 시각화 예시
+    # fpr = np.linspace(0, 1, 100)
+    # tpr = np.power(fpr, 0.5)  # 예시 곡선
+    # auc = 0.85
+    # visualizer.plot_roc_curve(fpr, tpr, auc)
