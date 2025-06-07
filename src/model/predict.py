@@ -249,6 +249,68 @@ class AnomalyPredictor:
             logger.error(f"실시간 예측 실패: {str(e)}")
             raise
 
+    def predict_anomaly_probability(self, data: pd.DataFrame) -> Dict[str, Any]:
+        """
+        데이터의 이상치 확률을 계산합니다.
+        
+        Args:
+            data (pd.DataFrame): 분석할 데이터
+            
+        Returns:
+            Dict[str, Any]: 이상치 확률과 관련 정보
+        """
+        try:
+            # 모델이 로드되지 않은 경우 로드
+            if self.model is None or not self.scalers:
+                self.load_models()
+            
+            # datetime 컬럼이 없는 경우 생성
+            if 'datetime' not in data.columns:
+                data['Time'] = (data['Time'].str.replace('오전', 'AM')
+                                          .str.replace('오후', 'PM'))
+                data['Time'] = pd.to_datetime(data['Time'], format='%p %I:%M:%S.%f').dt.strftime('%H:%M:%S.%f')
+                data['datetime'] = pd.to_datetime(data['Date'] + ' ' + data['Time'])
+            
+            # 각 스케일러를 사용하여 예측
+            all_predictions = []
+            for scaler in self.scalers:
+                X = self.prepare_sequence(data, scaler)
+                predictions = self.model.predict(X, verbose=0)
+                all_predictions.append(predictions)
+            
+            # 모든 스케일러를 통한 예측 평균
+            final_predictions = np.mean(all_predictions, axis=0)
+            
+            # 마지막 시퀀스의 예측 확률
+            last_probability = final_predictions[-1][0]
+            
+            # 결과 포맷팅
+            result = {
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'anomaly_probability': float(last_probability),
+                'anomaly_percentage': float(last_probability * 100),
+                'is_anomaly': bool(last_probability >= self.threshold),
+                'threshold': float(self.threshold),
+                'confidence_level': '높음' if last_probability > 0.8 else '중간' if last_probability > 0.5 else '낮음',
+                'data_summary': {
+                    'total_points': len(data),
+                    'sequence_length': self.seq_len,
+                    'last_sequence': {
+                        'start_time': data['datetime'].iloc[-self.seq_len].strftime('%Y-%m-%d %H:%M:%S'),
+                        'end_time': data['datetime'].iloc[-1].strftime('%Y-%m-%d %H:%M:%S'),
+                        'avg_temperature': float(data['Temp'].iloc[-self.seq_len:].mean()),
+                        'avg_current': float(data['Current'].iloc[-self.seq_len:].mean())
+                    }
+                }
+            }
+            
+            logger.info(f"이상치 확률 계산 완료: {result['anomaly_percentage']:.2f}%")
+            return result
+            
+        except Exception as e:
+            logger.error(f"이상치 확률 계산 실패: {str(e)}")
+            raise
+
 def create_predictor(model_dir: str = 'models') -> AnomalyPredictor:
     """
     예측기 객체를 생성합니다.
@@ -279,3 +341,8 @@ if __name__ == "__main__":
     # predictions, last_prob, result = predictor.predict(new_data)
     # print(f"이상치 확률: {last_prob*100:.2f}%")
     # print("상세 결과:", result)
+    
+    # # 이상치 확률 계산 예시
+    # anomaly_result = predictor.predict_anomaly_probability(new_data)
+    # print(f"이상치 확률: {anomaly_result['anomaly_percentage']:.2f}%")
+    # print("상세 결과:", anomaly_result)
