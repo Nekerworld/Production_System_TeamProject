@@ -323,6 +323,20 @@ def create_predictor(model_dir: str = 'models') -> AnomalyPredictor:
     """
     return AnomalyPredictor(model_dir)
 
+def predict_anomaly_probability(data: pd.DataFrame, model_dir: str = 'models') -> Dict[str, Any]:
+    """
+    데이터의 이상치 확률을 계산합니다.
+    
+    Args:
+        data (pd.DataFrame): 분석할 데이터
+        model_dir (str): 모델 디렉토리 경로
+        
+    Returns:
+        Dict[str, Any]: 이상치 확률과 관련 정보
+    """
+    predictor = create_predictor(model_dir)
+    return predictor.predict_anomaly_probability(data)
+
 # 사용 예시
 if __name__ == "__main__":
     # 예측기 생성
@@ -343,6 +357,6 @@ if __name__ == "__main__":
     # print("상세 결과:", result)
     
     # # 이상치 확률 계산 예시
-    # anomaly_result = predictor.predict_anomaly_probability(new_data)
+    # anomaly_result = predict_anomaly_probability(new_data)
     # print(f"이상치 확률: {anomaly_result['anomaly_percentage']:.2f}%")
     # print("상세 결과:", anomaly_result)
