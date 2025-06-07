@@ -11,12 +11,8 @@ from tensorflow.keras.models import load_model
 import joblib
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    confusion_matrix, classification_report
-)
-import seaborn as sns
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -119,6 +115,35 @@ class AnomalyPredictor:
             if isinstance(end_time, str):
                 end_time = pd.to_datetime(end_time)
             
+            # 예측 결과 시각화를 위한 데이터 준비
+            timestamps = data['datetime'].iloc[-len(predictions):]
+            if isinstance(timestamps.iloc[0], str):
+                timestamps = pd.to_datetime(timestamps)
+            
+            # Plotly 차트 생성
+            fig = make_subplots(rows=2, cols=1,
+                              shared_xaxes=True,
+                              vertical_spacing=0.05,
+                              subplot_titles=('Temperature', 'Current'))
+            
+            fig.add_trace(
+                go.Scatter(x=timestamps, y=data['Temp'].iloc[-len(predictions):],
+                          name='Temperature', line=dict(color='blue')),
+                row=1, col=1
+            )
+            
+            fig.add_trace(
+                go.Scatter(x=timestamps, y=data['Current'].iloc[-len(predictions):],
+                          name='Current', line=dict(color='green')),
+                row=2, col=1
+            )
+            
+            fig.update_layout(
+                height=600,
+                showlegend=True,
+                title_text="Sensor Data with Predictions"
+            )
+            
             result = {
                 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 'anomaly_probability': float(last_probability),
@@ -131,12 +156,10 @@ class AnomalyPredictor:
                     'process_id': int(last_sequence['Process'].iloc[-1])
                 },
                 'prediction_history': {
-                    'timestamps': [ts.strftime('%Y-%m-%d %H:%M:%S') 
-                                 if isinstance(ts, (pd.Timestamp, datetime)) 
-                                 else ts 
-                                 for ts in data['datetime'].iloc[-len(predictions):]],
+                    'timestamps': [ts.strftime('%Y-%m-%d %H:%M:%S') for ts in timestamps],
                     'probabilities': [float(p[0]) for p in predictions]
-                }
+                },
+                'visualization': fig
             }
             
             return result
@@ -160,12 +183,19 @@ class AnomalyPredictor:
             if self.model is None or not self.scalers:
                 self.load_models()
             
+            # datetime 컬럼이 없는 경우 생성
+            if 'datetime' not in data.columns:
+                data['Time'] = (data['Time'].str.replace('오전', 'AM')
+                                          .str.replace('오후', 'PM'))
+                data['Time'] = pd.to_datetime(data['Time'], format='%p %I:%M:%S.%f').dt.strftime('%H:%M:%S.%f')
+                data['datetime'] = pd.to_datetime(data['Date'] + ' ' + data['Time'])
+            
             all_predictions = []
             
             # 각 스케일러를 사용하여 예측
             for scaler in self.scalers:
                 X = self.prepare_sequence(data, scaler)
-                predictions = self.model.predict(X, verbose=0)  # verbose=0으로 설정하여 출력 제거
+                predictions = self.model.predict(X, verbose=0)
                 all_predictions.append(predictions)
             
             # 모든 스케일러를 통한 예측 평균
