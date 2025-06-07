@@ -15,6 +15,69 @@ from sklearn.preprocessing import StandardScaler
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# 필수 컬럼 정의
+REQUIRED_COLUMNS = ['Date', 'Time', 'Index', 'Process', 'Temp', 'Current']
+
+def validate_dataframe(df: pd.DataFrame, file_path: str) -> None:
+    """
+    데이터프레임의 유효성을 검사합니다.
+    
+    Args:
+        df (pd.DataFrame): 검사할 데이터프레임
+        file_path (str): 파일 경로 (로깅용)
+        
+    Raises:
+        ValueError: 필수 컬럼이 없거나 데이터 형식이 잘못된 경우
+    """
+    # 필수 컬럼 검사
+    missing_cols = [col for col in REQUIRED_COLUMNS if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"필수 컬럼 누락: {missing_cols} (파일: {os.path.basename(file_path)})")
+    
+    # 데이터 타입 검사
+    if not pd.api.types.is_numeric_dtype(df['Index']):
+        raise ValueError(f"Index 컬럼이 숫자형이 아님 (파일: {os.path.basename(file_path)})")
+    if not pd.api.types.is_numeric_dtype(df['Process']):
+        raise ValueError(f"Process 컬럼이 숫자형이 아님 (파일: {os.path.basename(file_path)})")
+    if not pd.api.types.is_numeric_dtype(df['Temp']):
+        raise ValueError(f"Temp 컬럼이 숫자형이 아님 (파일: {os.path.basename(file_path)})")
+    if not pd.api.types.is_numeric_dtype(df['Current']):
+        raise ValueError(f"Current 컬럼이 숫자형이 아님 (파일: {os.path.basename(file_path)})")
+
+def handle_missing_values(df: pd.DataFrame, file_path: str) -> pd.DataFrame:
+    """
+    결측치를 처리합니다.
+    
+    Args:
+        df (pd.DataFrame): 원본 데이터프레임
+        file_path (str): 파일 경로 (로깅용)
+        
+    Returns:
+        pd.DataFrame: 결측치가 처리된 데이터프레임
+    """
+    # 결측치 개수 확인
+    missing_counts = df.isnull().sum()
+    if missing_counts.any():
+        logger.warning(f"결측치 발견 (파일: {os.path.basename(file_path)}):\n{missing_counts[missing_counts > 0]}")
+    
+    # 결측치 처리
+    df = df.copy()
+    
+    # 날짜/시간 관련 결측치 처리
+    df['Date'] = df['Date'].fillna(method='ffill')
+    df['Time'] = df['Time'].fillna(method='ffill')
+    
+    # 수치형 데이터 결측치 처리 (이전 값으로 채우기)
+    numeric_cols = ['Index', 'Process', 'Temp', 'Current']
+    for col in numeric_cols:
+        df[col] = df[col].fillna(method='ffill')
+        # 여전히 결측치가 있다면 (시작 부분) 다음 값으로 채우기
+        df[col] = df[col].fillna(method='bfill')
+        # 그래도 결측치가 있다면 0으로 채우기
+        df[col] = df[col].fillna(0)
+    
+    return df
+
 def load_data_files(data_dir: str) -> Tuple[List[pd.DataFrame], pd.DataFrame]:
     """
     데이터 디렉토리에서 모든 CSV 파일을 로드합니다.
@@ -51,7 +114,14 @@ def load_one(file_path: str) -> pd.DataFrame:
         pd.DataFrame: 전처리된 데이터프레임
     """
     try:
+        # 데이터 로드
         df = pd.read_csv(file_path)
+        
+        # 데이터 검증
+        validate_dataframe(df, file_path)
+        
+        # 결측치 처리
+        df = handle_missing_values(df, file_path)
         
         # 시간 데이터 처리
         df['Time'] = (df['Time'].str.replace('오전', 'AM')
