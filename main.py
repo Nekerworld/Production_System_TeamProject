@@ -4,12 +4,13 @@ import os
 from glob import glob
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import LSTM, GRU, Dense, Dropout, BatchNormalization
-from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import seaborn as sns
+import joblib
 
 # reproducibility
 SEED = 42
@@ -101,11 +102,24 @@ for start in range(0, len(dataframes) - WINDOW_WIDTH + 1, SLIDE_STEP):
     model = build_model((SEQ_LEN, X_train.shape[2]))
     early_stopping = EarlyStopping(monitor='val_loss', patience=10,
                        restore_best_weights=True, verbose=1)
+    
+    # 모델 체크포인트 추가
+    checkpoint = ModelCheckpoint(
+        f'models/window_{start+1}_model.h5',
+        monitor='val_loss',
+        save_best_only=True,
+        verbose=1
+    )
 
     history = model.fit(X_train, y_train, epochs=200, batch_size=32,
-              validation_data=(X_val, y_val), callbacks=[early_stopping], verbose=1)
+              validation_data=(X_val, y_val), 
+              callbacks=[early_stopping, checkpoint], 
+              verbose=1)
     
-    window_histories.append(history.history)  # 히스토리 저장
+    window_histories.append(history.history)
+
+    # 스케일러 저장
+    joblib.dump(scaler, f'models/window_{start+1}_scaler.pkl')
 
     y_pred = (model.predict(X_test) >= 0.5).astype(int).ravel()
 
@@ -166,4 +180,68 @@ plt.ylabel('True Label')
 plt.xlabel('Predicted Label')
 plt.tight_layout()
 
-plt.show()
+# 실시간 예측을 위한 함수들
+def load_models_and_scalers():
+    """모든 윈도우의 모델과 스케일러를 로드"""
+    models = []
+    scalers = []
+    for i in range(len(dataframes) - WINDOW_WIDTH + 1):
+        model_path = f'models/window_{i+1}_model.h5'
+        scaler_path = f'models/window_{i+1}_scaler.pkl'
+        if os.path.exists(model_path) and os.path.exists(scaler_path):
+            models.append(load_model(model_path))
+            scalers.append(joblib.load(scaler_path))
+    return models, scalers
+
+def prepare_new_data(new_data, scaler):
+    """새로운 데이터를 모델 입력 형태로 변환"""
+    if len(new_data) < SEQ_LEN:
+        raise ValueError(f"데이터 길이가 {SEQ_LEN}보다 작습니다.")
+    
+    # 스케일링
+    scaled_data = scaler.transform(new_data[['Temp', 'Current']].values)
+    
+    # 시퀀스 생성
+    X = []
+    for i in range(len(new_data) - SEQ_LEN + 1):
+        X.append(scaled_data[i:i+SEQ_LEN])
+    return np.array(X)
+
+def predict_anomaly_probability(new_data):
+    """새로운 데이터에 대한 이상치 확률 예측"""
+    models, scalers = load_models_and_scalers()
+    if not models:
+        raise ValueError("저장된 모델이 없습니다.")
+    
+    all_predictions = []
+    
+    for model, scaler in zip(models, scalers):
+        # 데이터 준비
+        X = prepare_new_data(new_data, scaler)
+        
+        # 예측
+        predictions = model.predict(X)
+        all_predictions.append(predictions)
+    
+    # 모든 모델의 예측 평균
+    final_predictions = np.mean(all_predictions, axis=0)
+    
+    return final_predictions
+
+# plt.show()
+
+# # 예시 사용법
+# if __name__ == "__main__":
+#     # 모델 저장 디렉토리 생성
+#     os.makedirs('models', exist_ok=True)
+    
+#     # 기존 학습 코드 실행
+#     // ... existing training code ...
+    
+#     # 새로운 데이터 예측 예시
+#     # new_data = pd.DataFrame({
+#     #     'Temp': [...],  # 새로운 온도 데이터
+#     #     'Current': [...]  # 새로운 전류 데이터
+#     # })
+#     # probabilities = predict_anomaly_probability(new_data)
+#     # print(f"이상치 확률: {probabilities[-1][0]*100:.2f}%")
