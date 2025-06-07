@@ -3,12 +3,13 @@ import pandas as pd
 import os
 from glob import glob
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, confusion_matrix
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, GRU, Dense, Dropout, BatchNormalization
 from tensorflow.keras.callbacks import EarlyStopping
 import tensorflow as tf
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 # reproducibility
 SEED = 42
@@ -137,7 +138,6 @@ plt.figure(figsize=(15, 5))
 plt.subplot(1, 2, 1)
 for i, hist in enumerate(window_histories):
     plt.plot(hist['accuracy'], alpha=0.3, label=f'Window {i+1} Train')
-    plt.plot(hist['val_accuracy'], alpha=0.3, label=f'Window {i+1} Val')
 plt.title('Model Accuracy')
 plt.ylabel('Accuracy')
 plt.xlabel('Epoch')
@@ -148,13 +148,22 @@ plt.grid(True)
 plt.subplot(1, 2, 2)
 for i, hist in enumerate(window_histories):
     plt.plot(hist['loss'], alpha=0.3, label=f'Window {i+1} Train')
-    plt.plot(hist['val_loss'], alpha=0.3, label=f'Window {i+1} Val')
 plt.title('Model Loss')
 plt.ylabel('Loss')
 plt.xlabel('Epoch')
 plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
 plt.grid(True)
-
 plt.tight_layout()
-plt.savefig('training_history.png', bbox_inches='tight', dpi=300)
-plt.close()
+
+# Confusion Matrix 시각화
+plt.figure(figsize=(8, 6))
+cm = confusion_matrix(y_true_all, y_pred_all)
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+            xticklabels=['Normal', 'Anomaly'],
+            yticklabels=['Normal', 'Anomaly'])
+plt.title('Confusion Matrix')
+plt.ylabel('True Label')
+plt.xlabel('Predicted Label')
+plt.tight_layout()
+
+plt.show()
