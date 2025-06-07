@@ -19,8 +19,8 @@ import joblib
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class AnomalyModelTrainer:
-    """이상치 탐지 모델 학습 클래스"""
+class _AnomalyModelTrainer:
+    """이상치 탐지 모델 학습 클래스 (내부 구현)"""
     
     def __init__(self,
                  model_dir: str = 'models',
@@ -250,38 +250,70 @@ class AnomalyModelTrainer:
             logger.error(f"모델 로드 실패: {str(e)}")
             raise
 
-def create_trainer(model_dir: str = 'models',
-                  seq_len: int = 10,
-                  train_ratio: float = 0.7,
-                  val_ratio: float = 0.1) -> AnomalyModelTrainer:
+def train_model(data: pd.DataFrame,
+                model_dir: str = 'models',
+                seq_len: int = 10,
+                train_ratio: float = 0.7,
+                val_ratio: float = 0.1,
+                epochs: int = 100,
+                batch_size: int = 32,
+                patience: int = 10) -> Dict[str, Any]:
     """
-    모델 학습기 객체를 생성합니다.
+    이상치 탐지 모델을 학습합니다.
     
     Args:
+        data (pd.DataFrame): 학습 데이터
         model_dir (str): 모델 저장 디렉토리
         seq_len (int): 시퀀스 길이
         train_ratio (float): 학습 데이터 비율
         val_ratio (float): 검증 데이터 비율
+        epochs (int): 학습 에포크 수
+        batch_size (int): 배치 크기
+        patience (int): 조기 종료 인내심
         
     Returns:
-        AnomalyModelTrainer: 모델 학습기 객체
+        Dict[str, Any]: 학습 결과
     """
-    return AnomalyModelTrainer(model_dir, seq_len, train_ratio, val_ratio)
+    try:
+        trainer = _AnomalyModelTrainer(
+            model_dir=model_dir,
+            seq_len=seq_len,
+            train_ratio=train_ratio,
+            val_ratio=val_ratio
+        )
+        
+        results = trainer.train(
+            data=data,
+            epochs=epochs,
+            batch_size=batch_size,
+            patience=patience
+        )
+        
+        trainer.save_model()
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"모델 학습 실패: {str(e)}")
+        raise
 
-# 사용 예시
-if __name__ == "__main__":
-    # 모델 학습기 생성
-    trainer = create_trainer()
+# # 사용 예시
+# if __name__ == "__main__":
+#     # # 데이터 로드 예시
+#     # data = pd.DataFrame({
+#     #     'Temp': np.random.normal(25, 2, 1000),
+#     #     'Current': np.random.normal(1, 0.2, 1000),
+#     #     'is_anomaly': np.random.choice([0, 1], 1000, p=[0.9, 0.1])
+#     # })
     
-    # # 데이터 로드 예시
-    # data = pd.DataFrame({
-    #     'Temp': np.random.normal(25, 2, 1000),
-    #     'Current': np.random.normal(1, 0.2, 1000),
-    #     'is_anomaly': np.random.choice([0, 1], 1000, p=[0.9, 0.1])
-    # })
-    
-    # # 모델 학습
-    # results = trainer.train(data, epochs=10)
-    
-    # # 모델 저장
-    # trainer.save_model()
+#     # # 모델 학습
+#     # results = train_model(
+#     #     data=data,
+#     #     model_dir='models',
+#     #     seq_len=10,
+#     #     train_ratio=0.7,
+#     #     val_ratio=0.1,
+#     #     epochs=10,
+#     #     batch_size=32,
+#     #     patience=10
+#     # )
