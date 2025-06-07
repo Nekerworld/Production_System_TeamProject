@@ -97,6 +97,53 @@ def plot_training_history(histories: List[Dict[str, List[float]]],
         logger.error(f"학습 히스토리 시각화 실패: {str(e)}")
         raise
 
+def plot_confusion_matrix(cm: np.ndarray,
+                         output_dir: str = 'results',
+                         save: bool = True) -> go.Figure:
+    """
+    혼동 행렬을 시각화합니다.
+    
+    Args:
+        cm (np.ndarray): 혼동 행렬
+        output_dir (str): 결과 저장 디렉토리
+        save (bool): 그래프 저장 여부
+        
+    Returns:
+        go.Figure: Plotly figure 객체
+    """
+    try:
+        # Plotly를 사용한 인터랙티브 시각화
+        fig = go.Figure(data=go.Heatmap(
+            z=cm,
+            x=['Normal', 'Anomaly'],
+            y=['Normal', 'Anomaly'],
+            colorscale='Blues',
+            text=cm,
+            texttemplate='%{text}',
+            textfont={"size": 16}
+        ))
+        
+        # 레이아웃 업데이트
+        fig.update_layout(
+            title='Confusion Matrix',
+            xaxis_title='Predicted Label',
+            yaxis_title='True Label',
+            height=600,
+            width=800
+        )
+        
+        # 결과 저장
+        if save:
+            os.makedirs(output_dir, exist_ok=True)
+            fig.write_html(os.path.join(output_dir, 'confusion_matrix.html'))
+            logger.info(f"혼동 행렬 시각화 결과가 '{output_dir}/confusion_matrix.html'에 저장되었습니다.")
+        
+        return fig
+        
+    except Exception as e:
+        logger.error(f"혼동 행렬 시각화 실패: {str(e)}")
+        raise
+
 class AnomalyVisualizer:
     """이상치 시각화를 위한 클래스"""
     
@@ -125,35 +172,18 @@ class AnomalyVisualizer:
     
     def plot_confusion_matrix(self, 
                             cm: np.ndarray,
-                            save: bool = True) -> None:
+                            save: bool = True) -> go.Figure:
         """
         혼동 행렬을 시각화합니다.
         
         Args:
             cm (np.ndarray): 혼동 행렬
             save (bool): 그래프 저장 여부
+            
+        Returns:
+            go.Figure: Plotly figure 객체
         """
-        try:
-            plt.figure(figsize=(8, 6))
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                       xticklabels=['Normal', 'Anomaly'],
-                       yticklabels=['Normal', 'Anomaly'])
-            plt.title('Confusion Matrix')
-            plt.ylabel('True Label')
-            plt.xlabel('Predicted Label')
-            plt.tight_layout()
-            
-            if save:
-                plt.savefig(os.path.join(self.output_dir, 'confusion_matrix.png'))
-                plt.close()
-            else:
-                plt.show()
-                
-            logger.info("혼동 행렬 시각화 완료")
-            
-        except Exception as e:
-            logger.error(f"혼동 행렬 시각화 실패: {str(e)}")
-            raise
+        return plot_confusion_matrix(cm, self.output_dir, save)
     
     def plot_anomaly_detection(self,
                              data: pd.DataFrame,
