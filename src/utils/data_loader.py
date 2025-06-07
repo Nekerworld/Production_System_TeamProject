@@ -241,3 +241,35 @@ def prepare_window_data(
     except Exception as e:
         logger.error(f"윈도우 데이터 준비 실패: {str(e)}")
         raise
+
+def load_data(data_dir: str, window_width: int = 3, start_idx: int = 0) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, StandardScaler]:
+    """
+    데이터를 로드하고 전처리하여 학습에 필요한 형태로 변환합니다.
+    
+    Args:
+        data_dir (str): 데이터 디렉토리 경로
+        window_width (int): 윈도우 너비
+        start_idx (int): 시작 인덱스
+        
+    Returns:
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, StandardScaler]:
+            (X_train, y_train, X_val, y_val, X_test, y_test, scaler)
+    """
+    try:
+        # 데이터 파일 로드
+        dataframes, error_df = load_data_files(data_dir)
+        
+        # 윈도우 데이터 준비
+        X_train, y_train, X_val, y_val, X_test, y_test, scaler = prepare_window_data(
+            dataframes=dataframes,
+            error_df=error_df,
+            window_width=window_width,
+            start_idx=start_idx
+        )
+        
+        logger.info("데이터 로드 및 전처리 완료")
+        return X_train, y_train, X_val, y_val, X_test, y_test, scaler
+        
+    except Exception as e:
+        logger.error(f"데이터 로드 실패: {str(e)}")
+        raise
