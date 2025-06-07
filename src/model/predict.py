@@ -11,6 +11,12 @@ from tensorflow.keras.models import load_model
 import joblib
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    confusion_matrix, classification_report
+)
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -210,6 +216,129 @@ class AnomalyPredictor:
         except Exception as e:
             logger.error(f"실시간 예측 실패: {str(e)}")
             raise
+    
+    def evaluate_performance(self, 
+                           y_true: np.ndarray, 
+                           y_pred: np.ndarray,
+                           save_plots: bool = True,
+                           output_dir: str = 'results') -> Dict[str, Any]:
+        """
+        예측 성능을 평가합니다.
+        
+        Args:
+            y_true (np.ndarray): 실제 레이블
+            y_pred (np.ndarray): 예측 레이블
+            save_plots (bool): 그래프 저장 여부
+            output_dir (str): 결과 저장 디렉토리
+            
+        Returns:
+            Dict[str, Any]: 성능 평가 결과
+        """
+        try:
+            # 기본 성능 지표 계산
+            accuracy = accuracy_score(y_true, y_pred)
+            precision = precision_score(y_true, y_pred, zero_division=0)
+            recall = recall_score(y_true, y_pred, zero_division=0)
+            f1 = f1_score(y_true, y_pred, zero_division=0)
+            
+            # 분류 보고서 생성
+            report = classification_report(y_true, y_pred, output_dict=True)
+            
+            # 혼동 행렬 계산
+            cm = confusion_matrix(y_true, y_pred)
+            
+            # 결과 저장
+            results = {
+                'accuracy': float(accuracy),
+                'precision': float(precision),
+                'recall': float(recall),
+                'f1_score': float(f1),
+                'classification_report': report,
+                'confusion_matrix': cm.tolist()
+            }
+            
+            # 그래프 저장
+            if save_plots:
+                os.makedirs(output_dir, exist_ok=True)
+                self._save_performance_plots(cm, output_dir)
+            
+            logger.info(f"성능 평가 완료: 정확도 = {accuracy:.4f}, F1 = {f1:.4f}")
+            return results
+            
+        except Exception as e:
+            logger.error(f"성능 평가 실패: {str(e)}")
+            raise
+    
+    def _save_performance_plots(self, cm: np.ndarray, output_dir: str) -> None:
+        """
+        성능 평가 그래프를 저장합니다.
+        
+        Args:
+            cm (np.ndarray): 혼동 행렬
+            output_dir (str): 저장 디렉토리
+        """
+        try:
+            # 혼동 행렬 시각화
+            plt.figure(figsize=(8, 6))
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                       xticklabels=['Normal', 'Anomaly'],
+                       yticklabels=['Normal', 'Anomaly'])
+            plt.title('Confusion Matrix')
+            plt.ylabel('True Label')
+            plt.xlabel('Predicted Label')
+            plt.tight_layout()
+            plt.savefig(os.path.join(output_dir, 'confusion_matrix.png'))
+            plt.close()
+            
+            logger.info("성능 평가 그래프 저장 완료")
+            
+        except Exception as e:
+            logger.error(f"그래프 저장 실패: {str(e)}")
+            raise
+    
+    def evaluate_batch(self, 
+                      data_list: List[pd.DataFrame],
+                      true_labels: List[np.ndarray],
+                      save_plots: bool = True,
+                      output_dir: str = 'results') -> Dict[str, Any]:
+        """
+        여러 데이터에 대한 성능을 평가합니다.
+        
+        Args:
+            data_list (List[pd.DataFrame]): 평가할 데이터 리스트
+            true_labels (List[np.ndarray]): 실제 레이블 리스트
+            save_plots (bool): 그래프 저장 여부
+            output_dir (str): 결과 저장 디렉토리
+            
+        Returns:
+            Dict[str, Any]: 전체 성능 평가 결과
+        """
+        try:
+            all_predictions = []
+            all_true_labels = []
+            
+            # 각 데이터에 대한 예측 수행
+            for i, (data, true_label) in enumerate(zip(data_list, true_labels)):
+                logger.info(f"데이터 {i+1}/{len(data_list)} 평가 중...")
+                predictions, _, _ = self.predict(data)
+                pred_labels = (predictions >= self.threshold).astype(int)
+                
+                all_predictions.extend(pred_labels)
+                all_true_labels.extend(true_label)
+            
+            # 전체 성능 평가
+            results = self.evaluate_performance(
+                np.array(all_true_labels),
+                np.array(all_predictions),
+                save_plots,
+                output_dir
+            )
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"배치 평가 실패: {str(e)}")
+            raise
 
 def create_predictor(model_dir: str = 'models') -> AnomalyPredictor:
     """
@@ -228,7 +357,7 @@ if __name__ == "__main__":
     # 예측기 생성
     predictor = create_predictor()
     
-    # 새로운 데이터 예측
+    # 새로운 데이터 예측 및 평가
     # new_data = pd.DataFrame({
     #     'Date': ['2024-01-01'] * 10,
     #     'Time': ['10:00:00.000'] * 10,
@@ -241,3 +370,9 @@ if __name__ == "__main__":
     # predictions, last_prob, result = predictor.predict(new_data)
     # print(f"이상치 확률: {last_prob*100:.2f}%")
     # print("상세 결과:", result)
+    
+    # # 성능 평가 예시
+    # true_labels = np.array([0, 0, 1, 1, 0])  # 예시 레이블
+    # pred_labels = (predictions >= 0.5).astype(int)
+    # performance = predictor.evaluate_performance(true_labels, pred_labels)
+    # print("성능 평가 결과:", performance)
