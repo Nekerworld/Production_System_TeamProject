@@ -242,6 +242,54 @@ def prepare_window_data(
         logger.error(f"윈도우 데이터 준비 실패: {str(e)}")
         raise
 
+def preprocess_data(data: pd.DataFrame, error_df: pd.DataFrame, scaler: Optional[StandardScaler] = None) -> Tuple[pd.DataFrame, StandardScaler]:
+    """
+    데이터를 전처리합니다.
+    
+    Args:
+        data (pd.DataFrame): 원본 데이터
+        error_df (pd.DataFrame): 에러 데이터프레임
+        scaler (Optional[StandardScaler]): 기존 스케일러 (없으면 새로 생성)
+        
+    Returns:
+        Tuple[pd.DataFrame, StandardScaler]: (전처리된 데이터프레임, 스케일러)
+    """
+    try:
+        # 데이터 복사
+        df = data.copy()
+        
+        # 결측치 처리
+        df = handle_missing_values(df, "preprocess_data")
+        
+        # 시간 데이터 처리
+        if 'datetime' not in df.columns:
+            df['Time'] = (df['Time'].str.replace('오전', 'AM')
+                                  .str.replace('오후', 'PM'))
+            df['Time'] = pd.to_datetime(df['Time'], format='%p %I:%M:%S.%f').dt.strftime('%H:%M:%S.%f')
+            df['datetime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'])
+        
+        # Index를 정수형으로 변환
+        df['Index'] = df['Index'].astype(int)
+        
+        # 이상치 마킹
+        df = mark_anomaly(df, error_df)
+        
+        # 스케일링
+        if scaler is None:
+            scaler = StandardScaler().fit(df[['Temp', 'Current']])
+        
+        # 스케일링된 특성 추가
+        scaled_features = scaler.transform(df[['Temp', 'Current']])
+        df['Temp_scaled'] = scaled_features[:, 0]
+        df['Current_scaled'] = scaled_features[:, 1]
+        
+        logger.info("데이터 전처리 완료")
+        return df, scaler
+        
+    except Exception as e:
+        logger.error(f"데이터 전처리 실패: {str(e)}")
+        raise
+
 def load_data(data_dir: str, window_width: int = 3, start_idx: int = 0) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, StandardScaler]:
     """
     데이터를 로드하고 전처리하여 학습에 필요한 형태로 변환합니다.
