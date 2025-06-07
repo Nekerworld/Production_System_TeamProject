@@ -420,6 +420,216 @@ class AnomalyVisualizer:
             logger.error(f"ROC 곡선 시각화 실패: {str(e)}")
             raise
 
+class DashboardWidgets:
+    """대시보드 위젯 클래스"""
+    
+    def __init__(self, output_dir: str = 'results'):
+        """
+        Args:
+            output_dir (str): 위젯 저장 디렉토리
+        """
+        self.output_dir = output_dir
+        os.makedirs(output_dir, exist_ok=True)
+    
+    def create_gauge_chart(self,
+                          value: float,
+                          title: str,
+                          min_val: float = 0,
+                          max_val: float = 1,
+                          threshold: float = 0.5,
+                          save: bool = True) -> go.Figure:
+        """
+        게이지 차트를 생성합니다.
+        
+        Args:
+            value (float): 현재 값
+            title (str): 차트 제목
+            min_val (float): 최소값
+            max_val (float): 최대값
+            threshold (float): 임계값
+            save (bool): 저장 여부
+            
+        Returns:
+            go.Figure: 게이지 차트
+        """
+        try:
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=value,
+                title={'text': title},
+                gauge={
+                    'axis': {'range': [min_val, max_val]},
+                    'bar': {'color': "darkblue"},
+                    'steps': [
+                        {'range': [min_val, threshold], 'color': "lightgray"},
+                        {'range': [threshold, max_val], 'color': "gray"}
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': threshold
+                    }
+                }
+            ))
+            
+            fig.update_layout(
+                height=300,
+                margin=dict(l=20, r=20, t=50, b=20)
+            )
+            
+            if save:
+                fig.write_html(os.path.join(self.output_dir, f'gauge_{title.lower().replace(" ", "_")}.html'))
+            
+            return fig
+            
+        except Exception as e:
+            logger.error(f"게이지 차트 생성 실패: {str(e)}")
+            raise
+    
+    def create_status_indicator(self,
+                              status: str,
+                              title: str,
+                              save: bool = True) -> go.Figure:
+        """
+        상태 표시기를 생성합니다.
+        
+        Args:
+            status (str): 상태 ('normal', 'warning', 'error')
+            title (str): 표시기 제목
+            save (bool): 저장 여부
+            
+        Returns:
+            go.Figure: 상태 표시기
+        """
+        try:
+            colors = {
+                'normal': 'green',
+                'warning': 'orange',
+                'error': 'red'
+            }
+            
+            fig = go.Figure(go.Indicator(
+                mode="number+delta",
+                value=1,
+                title={'text': title},
+                delta={'reference': 0},
+                number={'font': {'color': colors.get(status.lower(), 'gray')}},
+                domain={'row': 0, 'column': 0}
+            ))
+            
+            fig.update_layout(
+                height=150,
+                margin=dict(l=20, r=20, t=50, b=20)
+            )
+            
+            if save:
+                fig.write_html(os.path.join(self.output_dir, f'status_{title.lower().replace(" ", "_")}.html'))
+            
+            return fig
+            
+        except Exception as e:
+            logger.error(f"상태 표시기 생성 실패: {str(e)}")
+            raise
+    
+    def create_alert_panel(self,
+                          alerts: List[Dict[str, Any]],
+                          save: bool = True) -> go.Figure:
+        """
+        알림 패널을 생성합니다.
+        
+        Args:
+            alerts (List[Dict[str, Any]]): 알림 목록
+            save (bool): 저장 여부
+            
+        Returns:
+            go.Figure: 알림 패널
+        """
+        try:
+            fig = go.Figure()
+            
+            # 알림 목록을 테이블로 표시
+            fig.add_trace(go.Table(
+                header=dict(
+                    values=['시간', '유형', '메시지', '상태'],
+                    fill_color='paleturquoise',
+                    align='left'
+                ),
+                cells=dict(
+                    values=[[a['time'] for a in alerts],
+                           [a['type'] for a in alerts],
+                           [a['message'] for a in alerts],
+                           [a['status'] for a in alerts]],
+                    fill_color='lavender',
+                    align='left'
+                )
+            ))
+            
+            fig.update_layout(
+                height=400,
+                margin=dict(l=20, r=20, t=50, b=20)
+            )
+            
+            if save:
+                fig.write_html(os.path.join(self.output_dir, 'alert_panel.html'))
+            
+            return fig
+            
+        except Exception as e:
+            logger.error(f"알림 패널 생성 실패: {str(e)}")
+            raise
+    
+    def create_metric_card(self,
+                          value: float,
+                          title: str,
+                          change: Optional[float] = None,
+                          save: bool = True) -> go.Figure:
+        """
+        메트릭 카드를 생성합니다.
+        
+        Args:
+            value (float): 현재 값
+            title (str): 카드 제목
+            change (Optional[float]): 변화량
+            save (bool): 저장 여부
+            
+        Returns:
+            go.Figure: 메트릭 카드
+        """
+        try:
+            fig = go.Figure()
+            
+            # 메트릭 값 표시
+            fig.add_trace(go.Indicator(
+                mode="number",
+                value=value,
+                title={'text': title},
+                number={'font': {'size': 30}},
+                domain={'row': 0, 'column': 0}
+            ))
+            
+            # 변화량이 있는 경우 표시
+            if change is not None:
+                fig.add_trace(go.Indicator(
+                    mode="delta",
+                    value=change,
+                    delta={'reference': 0},
+                    domain={'row': 1, 'column': 0}
+                ))
+            
+            fig.update_layout(
+                height=200,
+                margin=dict(l=20, r=20, t=50, b=20)
+            )
+            
+            if save:
+                fig.write_html(os.path.join(self.output_dir, f'metric_{title.lower().replace(" ", "_")}.html'))
+            
+            return fig
+            
+        except Exception as e:
+            logger.error(f"메트릭 카드 생성 실패: {str(e)}")
+            raise
+
 def create_visualizer(output_dir: str = 'results') -> AnomalyVisualizer:
     """
     시각화기 객체를 생성합니다.
@@ -431,6 +641,18 @@ def create_visualizer(output_dir: str = 'results') -> AnomalyVisualizer:
         AnomalyVisualizer: 시각화기 객체
     """
     return AnomalyVisualizer(output_dir)
+
+def create_dashboard_widgets(output_dir: str = 'results') -> DashboardWidgets:
+    """
+    대시보드 위젯 객체를 생성합니다.
+    
+    Args:
+        output_dir (str): 결과 저장 디렉토리
+        
+    Returns:
+        DashboardWidgets: 대시보드 위젯 객체
+    """
+    return DashboardWidgets(output_dir)
 
 # 사용 예시
 if __name__ == "__main__":
@@ -485,3 +707,43 @@ if __name__ == "__main__":
     # tpr = np.power(fpr, 0.5)  # 예시 곡선
     # auc = 0.85
     # visualizer.plot_roc_curve(fpr, tpr, auc)
+
+    # 대시보드 위젯 생성
+    widgets = create_dashboard_widgets()
+    
+    # # 게이지 차트 예시
+    # widgets.create_gauge_chart(
+    #     value=0.75,
+    #     title="이상치 확률",
+    #     threshold=0.5
+    # )
+    
+    # # 상태 표시기 예시
+    # widgets.create_status_indicator(
+    #     status="warning",
+    #     title="시스템 상태"
+    # )
+    
+    # # 알림 패널 예시
+    # alerts = [
+    #     {
+    #         'time': '2024-01-01 10:00:00',
+    #         'type': '경고',
+    #         'message': '온도가 임계값을 초과했습니다.',
+    #         'status': '확인 필요'
+    #     },
+    #     {
+    #         'time': '2024-01-01 10:05:00',
+    #         'type': '오류',
+    #         'message': '전류 센서 오작동',
+    #         'status': '긴급 조치 필요'
+    #     }
+    # ]
+    # widgets.create_alert_panel(alerts)
+    
+    # # 메트릭 카드 예시
+    # widgets.create_metric_card(
+    #     value=0.85,
+    #     title="정확도",
+    #     change=0.05
+    # )
