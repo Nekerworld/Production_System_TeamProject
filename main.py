@@ -1,142 +1,160 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import tensorflow as tf
-from tensorflow.keras import backend as K
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Input, Dense, LSTM, RepeatVector, Dropout, MultiHeadAttention, LayerNormalization, GlobalAveragePooling1D, GRU, BatchNormalization
-from tensorflow.keras.utils import plot_model
-import streamlit as st
 import pandas as pd
 import os
 from glob import glob
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report, roc_curve, auc, roc_auc_score, f1_score, precision_recall_curve, average_precision_score
-from sklearn.covariance import MinCovDet
-from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import classification_report
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, GRU, Dense, Dropout, BatchNormalization
 from tensorflow.keras.callbacks import EarlyStopping
-import seaborn as sns
+import tensorflow as tf
+import matplotlib.pyplot as plt
 
-# 1. csv 파일 불러오기 (error lot list csv는 제외)
-five_process_180sec = r'C:\\YS\\TUK\\S4E1\\생산시스템구축실무\\TeamProject\\Production_System_TeamProject\\data\\장비이상 조기탐지\\5공정_180sec'
-all_csv_files = glob(os.path.join(five_process_180sec, '*.csv'))
-csv_files = [f for f in all_csv_files if 'Error Lot list' not in os.path.basename(f)]
+# reproducibility
+SEED = 42
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
 
-# 2. error lot list 불러오기
-error_df = pd.read_csv(os.path.join(five_process_180sec, 'Error Lot list.csv'))
+# 경로 설정
+DATA_DIR = r'C:\YS\TUK\S4E1\생산시스템구축실무\TeamProject\Production_System_TeamProject\data\장비이상 조기탐지\5공정_180sec'
+csv_paths = [p for p in glob(os.path.join(DATA_DIR, '*.csv')) if
+             'Error Lot list' not in os.path.basename(p)]
+error_df   = pd.read_csv(os.path.join(DATA_DIR, 'Error Lot list.csv'))
 
-# 3. 각 데이터 파일을 보고 에러 csv에서 맞는 날짜를 찾은 후, 에러 csv를 참고해서 process를 모두 anomaly로 표기
-dataframes = []
-for file in csv_files:
-    df = pd.read_csv(file)
-    
-    # 4. 한글 오전/오후를 AM/PM으로 변환
-    df['Time'] = (
-        df['Time']
-        .str.replace('오전', 'AM')
-        .str.replace('오후', 'PM')
-    )
-    df['Time'] = pd.to_datetime(df['Time'], format='%p %I:%M:%S.%f').dt.strftime('%H:%M:%S.%f')
-    
-    # 5. 날짜와 시간 컬럼 병합
-    df['datetime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'], errors='coerce')
-    
-    # 6. 인덱스 컬럼 int로 변환
-    df['Index'] = df['Index'].astype(int)
-    
-    # 3. 에러 프로세스 표기
-    df['is_anomaly'] = 0  # 기본값
-    for _, row in error_df.iterrows():
-        date = str(row.iloc[0]).strip()
-        error_processes = set(row.iloc[1:].dropna().astype(int))
-        if len(error_processes) > 0:
-            mask = (df['Date'] == date) & (df['Process'].isin(error_processes))
+# 파라미터
+WINDOW_WIDTH  = 3    # 한 번에 묶을 CSV 개수
+SLIDE_STEP    = 1    # Stride
+SEQ_LEN       = 10   # LSTM 시계열 길이
+TRAIN_RATIO   = 0.7
+VAL_RATIO     = 0.1
+
+def mark_anomaly(df, err):
+    df['is_anomaly'] = 0
+    for _, row in err.iterrows():
+        date  = str(row.iloc[0]).strip()
+        procs = set(row.iloc[1:].dropna().astype(int))
+        if procs:
+            mask = (df['Date'] == date) & (df['Process'].isin(procs))
             df.loc[mask, 'is_anomaly'] = 1
+    return df
+
+def load_one(path):
+    df = pd.read_csv(path)
+    df['Time'] = (df['Time'].str.replace('오전', 'AM')
+                            .str.replace('오후', 'PM'))
+    df['Time'] = pd.to_datetime(df['Time'], format='%p %I:%M:%S.%f').dt.strftime('%H:%M:%S.%f')
+    df['datetime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'])
+    df['Index'] = df['Index'].astype(int)
+    df = mark_anomaly(df, error_df)
+    return df
+
+dataframes = [load_one(p) for p in csv_paths]
+
+def seq_generate(df, scaler):
+    X, y = [], []
+    feat = scaler.transform(df[['Temp', 'Current']].values)  # 스케일링
+    lab  = df['is_anomaly'].values
+    for i in range(len(df) - SEQ_LEN):
+        X.append(feat[i:i+SEQ_LEN])
+        y.append(1 if lab[i:i+SEQ_LEN].any() else 0)
+    return np.array(X), np.array(y)
+
+def build_model(input_shape):
+    model = Sequential([
+        LSTM(128, return_sequences=True, input_shape=input_shape),
+        BatchNormalization(),
+        Dropout(0.3),
+        GRU(64),
+        BatchNormalization(),
+        Dropout(0.3),
+        Dense(64, activation='relu'),
+        BatchNormalization(),
+        Dense(1, activation='sigmoid')
+    ])
+    model.compile(optimizer='adam',
+                  loss='binary_crossentropy',
+                  metrics=['accuracy'])
+    return model
+
+y_true_all, y_pred_all = [], []
+window_histories = []  # 각 윈도우의 학습 히스토리를 저장할 리스트
+
+for start in range(0, len(dataframes) - WINDOW_WIDTH + 1, SLIDE_STEP):
+    window_dfs = dataframes[start:start + WINDOW_WIDTH]
+    combined   = pd.concat(window_dfs, ignore_index=True)
+
+    n_total = len(combined)
+    n_train = int(n_total * TRAIN_RATIO)
+    n_val   = int(n_total * VAL_RATIO)
+
+    train_df = combined.iloc[:n_train]
+    val_df   = combined.iloc[n_train:n_train + n_val]
+    test_df  = combined.iloc[n_train + n_val:]
+
+    scaler = StandardScaler().fit(train_df[['Temp', 'Current']])
+
+    X_train, y_train = seq_generate(train_df, scaler)
+    X_val,   y_val   = seq_generate(val_df,   scaler)
+    X_test,  y_test  = seq_generate(test_df,  scaler)
+
+    model = build_model((SEQ_LEN, X_train.shape[2]))
+    early_stopping = EarlyStopping(monitor='val_loss', patience=10,
+                       restore_best_weights=True, verbose=1)
+
+    history = model.fit(X_train, y_train, epochs=200, batch_size=32,
+              validation_data=(X_val, y_val), callbacks=[early_stopping], verbose=1)
     
-    dataframes.append(df)
+    window_histories.append(history.history)  # 히스토리 저장
 
-# 7. LSTM 입력 형태로 수정
-WINDOW_SIZE = 10
-X_all = []
-y_all = []
+    y_pred = (model.predict(X_test) >= 0.5).astype(int).ravel()
 
-for df in dataframes:
-    # 각 데이터프레임을 시퀀스로 변환
-    features = df[['Temp', 'Current']].values
-    labels = df['is_anomaly'].values
+    print(f"\n{start+1}~{start+WINDOW_WIDTH}번 CSV 결과")
+    # 실제 존재하는 클래스만 평가
+    unique_classes = np.unique(np.concatenate([y_test, y_pred]))
+    target_names = ['Normal', 'Anomaly']
+    existing_target_names = [target_names[i] for i in unique_classes]
     
-    # 시퀀스 생성
-    for i in range(len(df) - WINDOW_SIZE):
-        X_all.append(features[i:i + WINDOW_SIZE])
-        # 시퀀스 내에 하나라도 이상이 있으면 1로 라벨링
-        y_all.append(1 if np.any(labels[i:i + WINDOW_SIZE]) else 0)
+    print(classification_report(y_test, y_pred,
+          labels=unique_classes,
+          target_names=existing_target_names))
 
-X = np.array(X_all)
-y = np.array(y_all)
+    y_true_all.extend(y_test)
+    y_pred_all.extend(y_pred)
 
-# 데이터 분할
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.1, random_state=42)
+print("\n전체 누적 성능")
+# 전체 결과에서도 실제 존재하는 클래스만 평가
+unique_classes_all = np.unique(np.concatenate([y_true_all, y_pred_all]))
+existing_target_names_all = [['Normal', 'Anomaly'][i] for i in unique_classes_all]
 
-# LSTM 모델 정의
-model = Sequential([
-    LSTM(128, input_shape=(X_train.shape[1], X_train.shape[2]), 
-         return_sequences=True),
-    BatchNormalization(),
-    Dropout(0.2),
-    GRU(64, return_sequences=False),
-    BatchNormalization(),
-    Dropout(0.2),
-    Dense(64, activation='relu'),
-    BatchNormalization(),
-    Dense(32, activation='relu'),
-    Dense(1, activation='sigmoid')
-])
+print(classification_report(y_true_all, y_pred_all,
+      labels=unique_classes_all,
+      target_names=existing_target_names_all))
 
-# 모델 컴파일
-model.compile(
-    optimizer='adam',
-    loss='binary_crossentropy',
-    metrics=['accuracy']
-)
+# 학습 히스토리 시각화
+plt.figure(figsize=(15, 5))
 
-class F1ScoreCallback(tf.keras.callbacks.Callback):
-    def __init__(self, validation_data):
-        super(F1ScoreCallback, self).__init__()
-        self.validation_data = validation_data
-        
-    def on_epoch_end(self, epoch, logs=None):
-        val_predict = (self.model.predict(self.validation_data[0]) > 0.5).astype(int)
-        val_targ = self.validation_data[1]
-        _val_f1 = f1_score(val_targ, val_predict)
-        print(f' - val_f1_score: {_val_f1:.4f}')
-        logs['val_f1_score'] = _val_f1
+# Accuracy plot
+plt.subplot(1, 2, 1)
+for i, hist in enumerate(window_histories):
+    plt.plot(hist['accuracy'], alpha=0.3, label=f'Window {i+1} Train')
+    plt.plot(hist['val_accuracy'], alpha=0.3, label=f'Window {i+1} Val')
+plt.title('Model Accuracy')
+plt.ylabel('Accuracy')
+plt.xlabel('Epoch')
+plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.grid(True)
 
-# Early Stopping 설정
-early_stopping = EarlyStopping(
-    monitor='val_loss',
-    patience=10,
-    restore_best_weights=True,
-    verbose=1
-)
+# Loss plot
+plt.subplot(1, 2, 2)
+for i, hist in enumerate(window_histories):
+    plt.plot(hist['loss'], alpha=0.3, label=f'Window {i+1} Train')
+    plt.plot(hist['val_loss'], alpha=0.3, label=f'Window {i+1} Val')
+plt.title('Model Loss')
+plt.ylabel('Loss')
+plt.xlabel('Epoch')
+plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.grid(True)
 
-# F1 Score 콜백 추가
-f1_callback = F1ScoreCallback(validation_data=(X_val, y_val))
-
-# 모델 학습
-print('\n===================== LSTM =====================')
-history = model.fit(
-    X_train, 
-    y_train, 
-    epochs=200,
-    batch_size=32, 
-    validation_data=(X_val, y_val),
-    callbacks=[early_stopping, f1_callback],
-    verbose=1
-)
-
-# 예측 및 평가
-y_scores = model.predict(X_test).flatten()
-y_pred = (y_scores >= 0.5).astype(int)
-
-# 결과 출력
-print("\n테스트 데이터 평가:")
-print(classification_report(y_test, y_pred, target_names=["Normal", "Anomaly"]))
+plt.tight_layout()
+plt.savefig('training_history.png', bbox_inches='tight', dpi=300)
+plt.close()
