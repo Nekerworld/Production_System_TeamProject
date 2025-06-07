@@ -18,6 +18,85 @@ import plotly.express as px
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def plot_training_history(histories: List[Dict[str, List[float]]], 
+                         output_dir: str = 'results',
+                         save: bool = True) -> go.Figure:
+    """
+    학습 히스토리를 시각화합니다.
+    
+    Args:
+        histories (List[Dict[str, List[float]]]): 학습 히스토리 리스트
+        output_dir (str): 결과 저장 디렉토리
+        save (bool): 그래프 저장 여부
+        
+    Returns:
+        go.Figure: Plotly figure 객체
+    """
+    try:
+        # 서브플롯 생성
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=('Model Accuracy', 'Model Loss'),
+            specs=[[{"type": "scatter"}, {"type": "scatter"}]]
+        )
+        
+        # 각 윈도우의 학습 히스토리 플롯
+        for i, history in enumerate(histories):
+            # Accuracy 플롯
+            fig.add_trace(
+                go.Scatter(
+                    y=history['accuracy'],
+                    name=f'Window {i+1} Train',
+                    line=dict(width=1),
+                    opacity=0.7
+                ),
+                row=1, col=1
+            )
+            
+            # Loss 플롯
+            fig.add_trace(
+                go.Scatter(
+                    y=history['loss'],
+                    name=f'Window {i+1} Train',
+                    line=dict(width=1),
+                    opacity=0.7,
+                    showlegend=False
+                ),
+                row=1, col=2
+            )
+        
+        # 레이아웃 업데이트
+        fig.update_layout(
+            title_text="Training History",
+            height=500,
+            width=1200,
+            showlegend=True,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01
+            )
+        )
+        
+        # 축 레이블 업데이트
+        fig.update_xaxes(title_text="Epoch", row=1, col=1)
+        fig.update_xaxes(title_text="Epoch", row=1, col=2)
+        fig.update_yaxes(title_text="Accuracy", row=1, col=1)
+        fig.update_yaxes(title_text="Loss", row=1, col=2)
+        
+        # 결과 저장
+        if save:
+            os.makedirs(output_dir, exist_ok=True)
+            fig.write_html(os.path.join(output_dir, 'training_history.html'))
+            logger.info(f"학습 히스토리 시각화 결과가 '{output_dir}/training_history.html'에 저장되었습니다.")
+        
+        return fig
+        
+    except Exception as e:
+        logger.error(f"학습 히스토리 시각화 실패: {str(e)}")
+        raise
+
 class AnomalyVisualizer:
     """이상치 시각화를 위한 클래스"""
     
@@ -31,77 +110,18 @@ class AnomalyVisualizer:
         
     def plot_training_history(self, 
                             histories: List[Dict[str, List[float]]],
-                            save: bool = True) -> None:
+                            save: bool = True) -> go.Figure:
         """
         학습 히스토리를 시각화합니다.
         
         Args:
             histories (List[Dict[str, List[float]]]): 학습 히스토리 리스트
             save (bool): 그래프 저장 여부
+            
+        Returns:
+            go.Figure: Plotly figure 객체
         """
-        try:
-            # 서브플롯 생성
-            fig = make_subplots(
-                rows=1, cols=2,
-                subplot_titles=('Model Accuracy', 'Model Loss'),
-                specs=[[{"type": "scatter"}, {"type": "scatter"}]]
-            )
-            
-            # 각 윈도우의 학습 히스토리 플롯
-            for i, history in enumerate(histories):
-                # Accuracy 플롯
-                fig.add_trace(
-                    go.Scatter(
-                        y=history['accuracy'],
-                        name=f'Window {i+1} Train',
-                        line=dict(width=1),
-                        opacity=0.7
-                    ),
-                    row=1, col=1
-                )
-                
-                # Loss 플롯
-                fig.add_trace(
-                    go.Scatter(
-                        y=history['loss'],
-                        name=f'Window {i+1} Train',
-                        line=dict(width=1),
-                        opacity=0.7,
-                        showlegend=False
-                    ),
-                    row=1, col=2
-                )
-            
-            # 레이아웃 업데이트
-            fig.update_layout(
-                title_text="Training History",
-                height=500,
-                width=1200,
-                showlegend=True,
-                legend=dict(
-                    yanchor="top",
-                    y=0.99,
-                    xanchor="left",
-                    x=0.01
-                )
-            )
-            
-            # 축 레이블 업데이트
-            fig.update_xaxes(title_text="Epoch", row=1, col=1)
-            fig.update_xaxes(title_text="Epoch", row=1, col=2)
-            fig.update_yaxes(title_text="Accuracy", row=1, col=1)
-            fig.update_yaxes(title_text="Loss", row=1, col=2)
-            
-            # 결과 저장
-            if save:
-                fig.write_html(os.path.join(self.output_dir, 'training_history.html'))
-                logger.info("학습 히스토리 시각화 결과가 'results/training_history.html'에 저장되었습니다.")
-            
-            return fig
-            
-        except Exception as e:
-            logger.error(f"학습 히스토리 시각화 실패: {str(e)}")
-            raise
+        return plot_training_history(histories, self.output_dir, save)
     
     def plot_confusion_matrix(self, 
                             cm: np.ndarray,
