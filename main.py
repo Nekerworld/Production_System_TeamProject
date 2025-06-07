@@ -78,6 +78,21 @@ def build_model(input_shape):
                   metrics=['accuracy'])
     return model
 
+# 모델 저장 디렉토리 생성
+os.makedirs('models', exist_ok=True)
+
+# 첫 번째 모델 생성
+model = build_model((SEQ_LEN, 2))  # 2는 feature 수 (Temp, Current)
+early_stopping = EarlyStopping(monitor='val_loss', patience=10,
+                   restore_best_weights=True, verbose=1)
+
+checkpoint = ModelCheckpoint(
+    'models/prediction_model.h5',
+    monitor='val_loss',
+    save_best_only=True,
+    verbose=1
+)
+
 y_true_all, y_pred_all = [], []
 window_histories = []  # 각 윈도우의 학습 히스토리를 저장할 리스트
 
@@ -99,19 +114,8 @@ for start in range(0, len(dataframes) - WINDOW_WIDTH + 1, SLIDE_STEP):
     X_val,   y_val   = seq_generate(val_df,   scaler)
     X_test,  y_test  = seq_generate(test_df,  scaler)
 
-    model = build_model((SEQ_LEN, X_train.shape[2]))
-    early_stopping = EarlyStopping(monitor='val_loss', patience=10,
-                       restore_best_weights=True, verbose=1)
-    
-    # 모델 체크포인트 추가
-    checkpoint = ModelCheckpoint(
-        f'models/window_{start+1}_model.h5',
-        monitor='val_loss',
-        save_best_only=True,
-        verbose=1
-    )
-
-    history = model.fit(X_train, y_train, epochs=200, batch_size=32,
+    # 모델 학습 (첫 번째 윈도우에서는 새로 학습, 이후에는 이어서 학습)
+    history = model.fit(X_train, y_train, epochs=2, batch_size=32,
               validation_data=(X_val, y_val), 
               callbacks=[early_stopping, checkpoint], 
               verbose=1)
@@ -181,17 +185,15 @@ plt.xlabel('Predicted Label')
 plt.tight_layout()
 
 # 실시간 예측을 위한 함수들
-def load_models_and_scalers():
-    """모든 윈도우의 모델과 스케일러를 로드"""
-    models = []
+def load_model_and_scalers():
+    """모델과 모든 윈도우의 스케일러를 로드"""
+    model = load_model('models/continuous_model.h5')
     scalers = []
     for i in range(len(dataframes) - WINDOW_WIDTH + 1):
-        model_path = f'models/window_{i+1}_model.h5'
         scaler_path = f'models/window_{i+1}_scaler.pkl'
-        if os.path.exists(model_path) and os.path.exists(scaler_path):
-            models.append(load_model(model_path))
+        if os.path.exists(scaler_path):
             scalers.append(joblib.load(scaler_path))
-    return models, scalers
+    return model, scalers
 
 def prepare_new_data(new_data, scaler):
     """새로운 데이터를 모델 입력 형태로 변환"""
@@ -209,13 +211,13 @@ def prepare_new_data(new_data, scaler):
 
 def predict_anomaly_probability(new_data):
     """새로운 데이터에 대한 이상치 확률 예측"""
-    models, scalers = load_models_and_scalers()
-    if not models:
-        raise ValueError("저장된 모델이 없습니다.")
+    model, scalers = load_model_and_scalers()
+    if not scalers:
+        raise ValueError("저장된 스케일러가 없습니다.")
     
     all_predictions = []
     
-    for model, scaler in zip(models, scalers):
+    for scaler in scalers:
         # 데이터 준비
         X = prepare_new_data(new_data, scaler)
         
@@ -223,7 +225,7 @@ def predict_anomaly_probability(new_data):
         predictions = model.predict(X)
         all_predictions.append(predictions)
     
-    # 모든 모델의 예측 평균
+    # 모든 스케일러를 통한 예측 평균
     final_predictions = np.mean(all_predictions, axis=0)
     
     return final_predictions
