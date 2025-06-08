@@ -187,7 +187,7 @@ plt.tight_layout()
 # 실시간 예측을 위한 함수들
 def load_model_and_scalers():
     """모델과 모든 윈도우의 스케일러를 로드"""
-    model = load_model('models/continuous_model.h5')
+    model = load_model('models/prediction_model.h5')
     scalers = []
     for i in range(len(dataframes) - WINDOW_WIDTH + 1):
         scaler_path = f'models/window_{i+1}_scaler.pkl'
