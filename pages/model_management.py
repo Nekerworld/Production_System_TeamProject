@@ -173,7 +173,7 @@ def train_new_model():
         with st.spinner("모델 학습 중..."):
             try:
                 # 모델 학습
-                history, model, metrics = train_model(
+                history, model, metrics = train.train_model(
                     window_width=window_width,
                     epochs=epochs,
                     batch_size=batch_size,
