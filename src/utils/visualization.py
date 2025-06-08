@@ -148,7 +148,10 @@ def plot_prediction_results(data: pd.DataFrame, predictions: np.ndarray, output_
     """예측 결과 시각화"""
     try:
         # 예측 결과를 1차원 배열로 변환
-        if isinstance(predictions, np.ndarray):
+        if isinstance(predictions, dict):
+            # 딕셔너리인 경우 anomaly_probability 값을 사용
+            predictions = np.array([predictions['anomaly_probability']])
+        elif isinstance(predictions, np.ndarray):
             if predictions.ndim > 1:
                 predictions = predictions.ravel()
         
