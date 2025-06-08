@@ -109,15 +109,15 @@ def show_prediction_results(data: pd.DataFrame, predictions: Dict[str, Any]):
     
     # 상세 정보
     st.subheader("상세 정보")
+    
+    # 데이터 요약 정보
     summary = predictions['data_summary']
-    st.write({
-        "총 데이터 포인트": summary['total_points'],
-        "시퀀스 길이": summary['sequence_length'],
-        "평균 온도": f"{summary['last_sequence']['avg_temperature']:.2f}°C",
-        "평균 전류": f"{summary['last_sequence']['avg_current']:.2f}A",
-        "시작 시간": summary['last_sequence']['start_time'],
-        "종료 시간": summary['last_sequence']['end_time']
-    })
+    st.markdown(f"- **총 데이터 포인트**: {summary['total_points']}")
+    st.markdown(f"- **시퀀스 길이**: {summary['sequence_length']}")
+    st.markdown(f"- **평균 온도**: {summary['last_sequence']['avg_temperature']:.2f}°C")
+    st.markdown(f"- **평균 전류**: {summary['last_sequence']['avg_current']:.2f}A")
+    st.markdown(f"- **시작 시간**: {summary['last_sequence']['start_time']}")
+    st.markdown(f"- **종료 시간**: {summary['last_sequence']['end_time']}")
     
     # 원시 데이터 확인
     if st.checkbox("원시 데이터 보기"):
@@ -170,14 +170,12 @@ def show_prediction_details(data: pd.DataFrame, predictions: Dict[str, Any]) -> 
     # 데이터 요약 정보
     st.subheader("데이터 요약")
     summary = predictions['data_summary']
-    st.write({
-        "총 데이터 포인트": summary['total_points'],
-        "시퀀스 길이": summary['sequence_length'],
-        "평균 온도": f"{summary['last_sequence']['avg_temperature']:.2f}°C",
-        "평균 전류": f"{summary['last_sequence']['avg_current']:.2f}A",
-        "시작 시간": summary['last_sequence']['start_time'],
-        "종료 시간": summary['last_sequence']['end_time']
-    })
+    st.markdown(f"- **총 데이터 포인트**: {summary['total_points']}")
+    st.markdown(f"- **시퀀스 길이**: {summary['sequence_length']}")
+    st.markdown(f"- **평균 온도**: {summary['last_sequence']['avg_temperature']:.2f}°C")
+    st.markdown(f"- **평균 전류**: {summary['last_sequence']['avg_current']:.2f}A")
+    st.markdown(f"- **시작 시간**: {summary['last_sequence']['start_time']}")
+    st.markdown(f"- **종료 시간**: {summary['last_sequence']['end_time']}")
     
     # 원본 데이터 표시 옵션
     if st.checkbox("원본 데이터 보기"):
