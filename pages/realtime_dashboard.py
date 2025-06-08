@@ -15,6 +15,7 @@ from plyer import notification
 import threading
 from queue import Queue
 import json
+from typing import Tuple
 
 # 프로젝트 루트 디렉토리를 Python 경로에 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -95,49 +96,58 @@ def generate_sample_data(n_points: int = 100) -> pd.DataFrame:
         'Current': np.random.normal(1, 0.2, n_points)
     })
 
-def update_metrics(data: pd.DataFrame):
-    """메트릭 업데이트"""
-    # 이상치 확률 계산
+def update_metrics(data: pd.DataFrame, alert_queue: Queue, model_dir: str = 'models') -> Tuple[float, int, float, float]:
+    """
+    주요 메트릭 업데이트
+    Args:
+        data (pd.DataFrame): 현재 데이터
+        alert_queue (Queue): 알림 큐
+        model_dir (str): 모델 디렉토리
+    Returns:
+        Tuple[float, int, float, float]: 현재 이상치 확률, 감지된 이상치 수, 모델 정확도, 평균 응답 시간
+    """
+    current_prob = 0.0
+    detected_anomalies = 0
+    model_accuracy = 0.95  # 예시 값
+    avg_response_time = 0.12  # 예시 값
+
     try:
-        anomaly_prob = predict_anomaly_probability(data)
-        if isinstance(anomaly_prob, np.ndarray) and len(anomaly_prob) > 0:
-            current_prob = float(anomaly_prob[-1][0]) * 100
-        else:
-            current_prob = 0.0
-            st.warning("예측 결과를 처리할 수 없습니다.")
+        # predict_anomaly_probability 함수 호출
+        prediction_result = predict_anomaly_probability(data, model_dir)
+        
+        current_prob = prediction_result['anomaly_percentage']
+        if prediction_result['is_anomaly']:
+            detected_anomalies = 1 # 이상치 감지 시 1로 설정
+            
+        # 알림 생성 (예시)
+        if prediction_result['is_anomaly'] and current_prob > 50:
+            alert_queue.put({
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "type": "이상 감지",
+                "message": f"높은 이상치 확률 감지: {current_prob:.2f}%",
+                "status": "위험"
+            })
+            send_desktop_notification("이상 감지", f"온도/전류 이상치 확률: {current_prob:.2f}%")
+
     except Exception as e:
+        st.warning(f"예측 결과를 처리할 수 없습니다: {e}")
+        logger.error(f"예측 결과 처리 중 오류 발생: {e}")
         current_prob = 0.0
-        st.error(f"예측 중 오류 발생: {str(e)}")
-    
+        detected_anomalies = 0
+
+    # Streamlit 메트릭 표시
     col1, col2, col3, col4 = st.columns(4)
-    
+
     with col1:
-        st.metric(
-            label="현재 이상치 확률",
-            value=f"{current_prob:.1f}%",
-            delta=None
-        )
-    
+        st.metric(label="현재 이상치 확률", value=f"{current_prob:.1f}%")
     with col2:
-        st.metric(
-            label="오늘 감지된 이상",
-            value=str(len(st.session_state.alerts)),
-            delta=None
-        )
-    
+        st.metric(label="감지된 이상치", value=detected_anomalies)
     with col3:
-        st.metric(
-            label="모델 정확도",
-            value="92.5%",
-            delta=None
-        )
-    
+        st.metric(label="모델 정확도", value=f"{model_accuracy*100:.1f}%")
     with col4:
-        st.metric(
-            label="평균 응답 시간",
-            value="0.8초",
-            delta=None
-        )
+        st.metric(label="평균 응답 시간", value=f"{avg_response_time:.2f}s")
+
+    return current_prob, detected_anomalies, model_accuracy, avg_response_time
 
 def plot_realtime_data(data: pd.DataFrame):
     """실시간 데이터 시각화"""
@@ -224,7 +234,7 @@ def main():
     monitor_system(data)
     
     # 메트릭 업데이트
-    update_metrics(data)
+    update_metrics(data, alert_queue)
     
     # 실시간 데이터 시각화
     st.subheader("실시간 센서 데이터")
