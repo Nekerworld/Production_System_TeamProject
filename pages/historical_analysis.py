@@ -16,19 +16,18 @@ from glob import glob
 # 프로젝트 루트 디렉토리를 Python 경로에 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.utils.data_loader import load_data_files, preprocess_data
+from src.utils.data_loader import load_data_files, preprocess_data, mark_anomalies
 from src.utils.visualization import plot_prediction_results
 
-# 페이지 설정
-st.set_page_config(
-    page_title="과거 데이터 분석",
-    page_icon="📈",
-    layout="wide"
-)
+# 페이지 설정 (app.py에서 전역으로 설정되므로 여기서는 제거합니다.)
+# st.set_page_config(
+#     page_title="이력 데이터 분석",
+#     page_icon="🕰️",
+#     layout="wide"
+# )
 
-def load_historical_data():
+def load_historical_data(data_dir: str = 'data/장비이상 조기탐지/5공정_180sec') -> pd.DataFrame:
     """과거 데이터 로드"""
-    data_dir = 'data/장비이상 조기탐지/5공정_180sec'
     csv_paths = [p for p in glob(os.path.join(data_dir, '*.csv')) if
                  'Error Lot list' not in os.path.basename(p)]
     error_df = pd.read_csv(os.path.join(data_dir, 'Error Lot list.csv'))
