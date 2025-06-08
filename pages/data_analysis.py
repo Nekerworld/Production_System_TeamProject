@@ -17,13 +17,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.utils.data_loader import load_data_files, preprocess_data # 데이터 로딩 및 전처리 함수 임포트
 
-# 페이지 설정
-st.set_page_config(
-    page_title="데이터 분석",
-    page_icon="🔍",
-    layout="wide"
-)
-
 def load_and_prepare_all_data(data_dir: str = 'data/장비이상 조기탐지/5공정_180sec') -> pd.DataFrame:
     """모든 데이터를 로드하고 전처리하여 단일 DataFrame으로 반환합니다."""
     st.info(f"데이터 디렉토리: {data_dir} 에서 데이터 로드 중...")

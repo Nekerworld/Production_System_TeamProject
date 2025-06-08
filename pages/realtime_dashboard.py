@@ -27,12 +27,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.model import predict_anomaly_probability
 from src.utils.visualization import create_visualizer, create_dashboard_widgets
 
-# 페이지 설정
-st.set_page_config(
-    page_title="실시간 대시보드",
-    page_icon="📊",
-    layout="wide"
-)
+# 페이지 설정 (app.py에서 전역으로 설정되므로 여기서는 제거합니다.)
+# st.set_page_config(
+#     page_title="실시간 대시보드",
+#     page_icon="📊",
+#     layout="wide"
+# )
 
 # 세션 상태 초기화
 if 'alerts' not in st.session_state:

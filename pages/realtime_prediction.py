@@ -19,13 +19,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.model import predict_anomaly_probability
 from src.utils.visualization import plot_prediction_results
 
-# 페이지 설정
-st.set_page_config(
-    page_title="실시간 예측",
-    page_icon="🔮",
-    layout="wide"
-)
-
 def create_input_form():
     """입력 폼 생성"""
     st.subheader("데이터 입력")

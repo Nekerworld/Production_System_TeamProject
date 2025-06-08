@@ -20,15 +20,11 @@ from tensorflow.keras.models import load_model
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.utils.data_loader import load_data_files, preprocess_data
-from src.model.train import train_model
+from src.model import train
 from src.utils.visualization import plot_training_history, plot_confusion_matrix
 
-# 페이지 설정
-st.set_page_config(
-    page_title="모델 관리",
-    page_icon="🤖",
-    layout="wide"
-)
+# 로깅 설정
+import logging
 
 def load_model_info():
     """모델 정보 로드"""
