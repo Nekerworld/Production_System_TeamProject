@@ -98,8 +98,16 @@ def generate_sample_data(n_points: int = 100) -> pd.DataFrame:
 def update_metrics(data: pd.DataFrame):
     """메트릭 업데이트"""
     # 이상치 확률 계산
-    anomaly_prob = predict_anomaly_probability(data)
-    current_prob = anomaly_prob[-1][0] * 100
+    try:
+        anomaly_prob = predict_anomaly_probability(data)
+        if isinstance(anomaly_prob, np.ndarray) and len(anomaly_prob) > 0:
+            current_prob = float(anomaly_prob[-1][0]) * 100
+        else:
+            current_prob = 0.0
+            st.warning("예측 결과를 처리할 수 없습니다.")
+    except Exception as e:
+        current_prob = 0.0
+        st.error(f"예측 중 오류 발생: {str(e)}")
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -107,28 +115,28 @@ def update_metrics(data: pd.DataFrame):
         st.metric(
             label="현재 이상치 확률",
             value=f"{current_prob:.1f}%",
-            delta=f"{current_prob - 15.2:.1f}%"
+            delta=None
         )
     
     with col2:
         st.metric(
             label="오늘 감지된 이상",
             value=str(len(st.session_state.alerts)),
-            delta=str(len(st.session_state.alerts) - 3)
+            delta=None
         )
     
     with col3:
         st.metric(
             label="모델 정확도",
             value="92.5%",
-            delta="0.5%"
+            delta=None
         )
     
     with col4:
         st.metric(
             label="평균 응답 시간",
             value="0.8초",
-            delta="-0.2초"
+            delta=None
         )
 
 def plot_realtime_data(data: pd.DataFrame):
