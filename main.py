@@ -81,8 +81,10 @@ def build_model(input_shape):
 # 모델 저장 디렉토리 생성
 os.makedirs('models', exist_ok=True)
 
-# 첫 번째 모델 생성
+# 단일 모델 생성
 model = build_model((SEQ_LEN, 2))  # 2는 feature 수 (Temp, Current)
+
+# 전체 학습 과정을 위한 콜백 설정
 early_stopping = EarlyStopping(monitor='val_loss', patience=10,
                    restore_best_weights=True, verbose=1)
 
@@ -96,6 +98,11 @@ checkpoint = ModelCheckpoint(
 y_true_all, y_pred_all = [], []
 window_histories = []  # 각 윈도우의 학습 히스토리를 저장할 리스트
 
+# 전체 데이터에 대한 스케일러 생성
+all_data = pd.concat(dataframes, ignore_index=True)
+global_scaler = StandardScaler().fit(all_data[['Temp', 'Current']])
+joblib.dump(global_scaler, 'models/global_scaler.pkl')
+
 for start in range(0, len(dataframes) - WINDOW_WIDTH + 1, SLIDE_STEP):
     window_dfs = dataframes[start:start + WINDOW_WIDTH]
     combined   = pd.concat(window_dfs, ignore_index=True)
@@ -108,22 +115,18 @@ for start in range(0, len(dataframes) - WINDOW_WIDTH + 1, SLIDE_STEP):
     val_df   = combined.iloc[n_train:n_train + n_val]
     test_df  = combined.iloc[n_train + n_val:]
 
-    scaler = StandardScaler().fit(train_df[['Temp', 'Current']])
+    # 전역 스케일러 사용
+    X_train, y_train = seq_generate(train_df, global_scaler)
+    X_val,   y_val   = seq_generate(val_df,   global_scaler)
+    X_test,  y_test  = seq_generate(test_df,  global_scaler)
 
-    X_train, y_train = seq_generate(train_df, scaler)
-    X_val,   y_val   = seq_generate(val_df,   scaler)
-    X_test,  y_test  = seq_generate(test_df,  scaler)
-
-    # 모델 학습 (첫 번째 윈도우에서는 새로 학습, 이후에는 이어서 학습)
+    # 모델 학습 (이전 상태를 유지하면서 계속 학습)
     history = model.fit(X_train, y_train, epochs=200, batch_size=32,
               validation_data=(X_val, y_val), 
               callbacks=[early_stopping, checkpoint], 
               verbose=1)
     
     window_histories.append(history.history)
-
-    # 스케일러 저장
-    joblib.dump(scaler, f'models/window_{start+1}_scaler.pkl')
 
     y_pred = (model.predict(X_test) >= 0.5).astype(int).ravel()
 
@@ -185,15 +188,11 @@ plt.xlabel('Predicted Label')
 plt.tight_layout()
 
 # 실시간 예측을 위한 함수들
-def load_model_and_scalers():
-    """모델과 모든 윈도우의 스케일러를 로드"""
+def load_model_and_scaler():
+    """모델과 전역 스케일러를 로드"""
     model = load_model('models/prediction_model.h5')
-    scalers = []
-    for i in range(len(dataframes) - WINDOW_WIDTH + 1):
-        scaler_path = f'models/window_{i+1}_scaler.pkl'
-        if os.path.exists(scaler_path):
-            scalers.append(joblib.load(scaler_path))
-    return model, scalers
+    scaler = joblib.load('models/global_scaler.pkl')
+    return model, scaler
 
 def prepare_new_data(new_data, scaler):
     """새로운 데이터를 모델 입력 형태로 변환"""
@@ -211,24 +210,15 @@ def prepare_new_data(new_data, scaler):
 
 def predict_anomaly_probability(new_data):
     """새로운 데이터에 대한 이상치 확률 예측"""
-    model, scalers = load_model_and_scalers()
-    if not scalers:
-        raise ValueError("저장된 스케일러가 없습니다.")
+    model, scaler = load_model_and_scaler()
     
-    all_predictions = []
+    # 데이터 준비
+    X = prepare_new_data(new_data, scaler)
     
-    for scaler in scalers:
-        # 데이터 준비
-        X = prepare_new_data(new_data, scaler)
-        
-        # 예측
-        predictions = model.predict(X)
-        all_predictions.append(predictions)
+    # 예측
+    predictions = model.predict(X)
     
-    # 모든 스케일러를 통한 예측 평균
-    final_predictions = np.mean(all_predictions, axis=0)
-    
-    return final_predictions
+    return predictions
 
 # plt.show()
 

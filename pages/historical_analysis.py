@@ -20,7 +20,6 @@ from src.utils.data_loader import load_data_files, preprocess_data, mark_anomali
 from src.utils.visualization import plot_prediction_results
 
 # 페이지 설정 (app.py에서 전역으로 설정되므로 여기서는 제거합니다.)
-# st.set_page_config(
 #     page_title="이력 데이터 분석",
 #     page_icon="🕰️",
 #     layout="wide"
