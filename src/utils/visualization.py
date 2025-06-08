@@ -144,33 +144,19 @@ def plot_confusion_matrix(cm: np.ndarray,
         logger.error(f"혼동 행렬 시각화 실패: {str(e)}")
         raise
 
-def plot_prediction_results(data: pd.DataFrame,
-                          predictions: np.ndarray,
-                          output_dir: str = 'results',
-                          true_labels: Optional[np.ndarray] = None,
-                          threshold: float = 0.5,
-                          save: bool = True) -> go.Figure:
-    """
-    예측 결과를 시각화합니다.
-    
-    Args:
-        data (pd.DataFrame): 원본 데이터
-        predictions (np.ndarray): 예측 확률
-        output_dir (str): 결과 저장 디렉토리
-        true_labels (Optional[np.ndarray]): 실제 레이블
-        threshold (float): 이상치 판단 임계값
-        save (bool): 그래프 저장 여부
-        
-    Returns:
-        go.Figure: Plotly figure 객체
-    """
+def plot_prediction_results(data: pd.DataFrame, predictions: np.ndarray, output_dir: str = 'results', save: bool = True):
+    """예측 결과 시각화"""
     try:
-        # Plotly를 사용한 인터랙티브 시각화
-        fig = make_subplots(rows=4, cols=1,
-                          shared_xaxes=True,
-                          vertical_spacing=0.05,
-                          subplot_titles=('Temperature', 'Current', 
-                                        'Anomaly Probability', 'Prediction vs Actual'))
+        # 예측 결과를 1차원 배열로 변환
+        if isinstance(predictions, np.ndarray):
+            if predictions.ndim > 1:
+                predictions = predictions.ravel()
+        
+        # 서브플롯 생성
+        fig = make_subplots(rows=3, cols=1,
+                           shared_xaxes=True,
+                           vertical_spacing=0.05,
+                           subplot_titles=('Temperature', 'Current', 'Anomaly Probability'))
         
         # 온도 데이터
         fig.add_trace(
@@ -193,42 +179,31 @@ def plot_prediction_results(data: pd.DataFrame,
             row=3, col=1
         )
         
-        # 임계값 선
-        fig.add_hline(y=threshold, line_dash="dash", line_color="red",
+        # 임계값 선 추가
+        fig.add_hline(y=0.5, line_dash="dash", line_color="red",
                      annotation_text="Threshold", row=3, col=1)
         
-        # 예측 vs 실제
-        pred_labels = (predictions >= threshold).astype(int)
-        fig.add_trace(
-            go.Scatter(x=data['datetime'], y=pred_labels,
-                      name='Predicted', line=dict(color='red')),
-            row=4, col=1
-        )
-        
-        if true_labels is not None:
-            fig.add_trace(
-                go.Scatter(x=data['datetime'], y=true_labels,
-                          name='Actual', line=dict(color='blue')),
-                row=4, col=1
-            )
-        
-        # 레이아웃 설정
+        # 레이아웃 업데이트
         fig.update_layout(
-            height=1200,
+            height=900,
             showlegend=True,
-            title_text="Anomaly Detection Results"
+            title_text="Prediction Results"
         )
+        
+        # 축 레이블 업데이트
+        fig.update_yaxes(title_text="Temperature (°C)", row=1, col=1)
+        fig.update_yaxes(title_text="Current (A)", row=2, col=1)
+        fig.update_yaxes(title_text="Probability", row=3, col=1)
         
         # 결과 저장
         if save:
             os.makedirs(output_dir, exist_ok=True)
             fig.write_html(os.path.join(output_dir, 'prediction_results.html'))
-            logger.info(f"예측 결과 시각화가 '{output_dir}/prediction_results.html'에 저장되었습니다.")
         
         return fig
         
     except Exception as e:
-        logger.error(f"예측 결과 시각화 실패: {str(e)}")
+        logging.error(f"예측 결과 시각화 실패: {str(e)}")
         raise
 
 class AnomalyVisualizer:
@@ -291,8 +266,7 @@ class AnomalyVisualizer:
         Returns:
             go.Figure: Plotly figure 객체
         """
-        return plot_prediction_results(data, predictions, self.output_dir, 
-                                    true_labels, threshold, save)
+        return plot_prediction_results(data, predictions, self.output_dir, save)
     
     def plot_anomaly_detection(self,
                              data: pd.DataFrame,
