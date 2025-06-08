@@ -3,13 +3,13 @@
 """
 
 import os
+import logging
 import numpy as np
 import pandas as pd
-from typing import List, Tuple, Optional, Dict, Any
-import logging
 from tensorflow.keras.models import load_model
-import joblib
 from sklearn.preprocessing import StandardScaler
+import joblib
+from typing import List, Tuple, Optional, Dict, Any
 from datetime import datetime
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -17,6 +17,73 @@ from plotly.subplots import make_subplots
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# 상수 정의
+SEQ_LEN = 10  # 시퀀스 길이
+
+def load_model_and_scalers():
+    """모델과 모든 윈도우의 스케일러를 로드"""
+    try:
+        model = load_model('models/prediction_model.h5')
+        logger.info("모델 로드 완료")
+        
+        scalers = []
+        for i in range(31):  # 31개의 스케일러
+            scaler_path = f'models/window_{i+1}_scaler.pkl'
+            if os.path.exists(scaler_path):
+                scalers.append(joblib.load(scaler_path))
+        
+        logger.info(f"{len(scalers)}개의 스케일러 로드 완료")
+        return model, scalers
+        
+    except Exception as e:
+        logger.error(f"모델/스케일러 로드 실패: {str(e)}")
+        raise
+
+def prepare_new_data(new_data: pd.DataFrame, scaler: StandardScaler) -> np.ndarray:
+    """새로운 데이터를 모델 입력 형태로 변환"""
+    if len(new_data) < SEQ_LEN:
+        raise ValueError(f"데이터 길이가 {SEQ_LEN}보다 작습니다.")
+    
+    # feature 이름이 있는 DataFrame으로 변환
+    features = pd.DataFrame(new_data[['Temp', 'Current']], columns=['Temp', 'Current'])
+    
+    # 스케일링
+    scaled_data = scaler.transform(features)
+    
+    # 시퀀스 생성
+    X = []
+    for i in range(len(new_data) - SEQ_LEN + 1):
+        X.append(scaled_data[i:i+SEQ_LEN])
+    return np.array(X)
+
+def predict_anomaly_probability(new_data: pd.DataFrame) -> np.ndarray:
+    """새로운 데이터에 대한 이상치 확률 예측"""
+    try:
+        # 모델과 스케일러 로드
+        model, scalers = load_model_and_scalers()
+        if not scalers:
+            raise ValueError("저장된 스케일러가 없습니다.")
+        
+        all_predictions = []
+        
+        for scaler in scalers:
+            # 데이터 준비
+            X = prepare_new_data(new_data, scaler)
+            
+            # 예측
+            predictions = model.predict(X)
+            all_predictions.append(predictions)
+        
+        # 모든 스케일러를 통한 예측 평균
+        final_predictions = np.mean(all_predictions, axis=0)
+        
+        logger.info(f"이상치 확률 계산 완료: {final_predictions[-1][0]*100:.2f}%")
+        return final_predictions
+        
+    except Exception as e:
+        logger.error(f"예측 중 오류 발생: {str(e)}")
+        raise
 
 class AnomalyPredictor:
     """이상치 예측을 위한 클래스"""
@@ -29,7 +96,7 @@ class AnomalyPredictor:
         self.model_dir = model_dir
         self.model = None
         self.scalers = []
-        self.seq_len = 10  # 시퀀스 길이
+        self.seq_len = SEQ_LEN  # 시퀀스 길이
         self.threshold = 0.5  # 이상치 판단 임계값
         
     def load_models(self) -> None:
