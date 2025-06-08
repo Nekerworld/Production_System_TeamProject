@@ -71,10 +71,19 @@ def show_prediction_results(data: pd.DataFrame, predictions: np.ndarray):
     """예측 결과 표시"""
     st.subheader("예측 결과")
     
-    # 예측 확률
-    latest_prob = predictions[-1][0] * 100
+    # 예측 결과 처리
+    try:
+        if isinstance(predictions, np.ndarray) and len(predictions) > 0:
+            latest_prob = float(predictions[-1][0]) * 100
+        else:
+            latest_prob = 0.0
+            st.warning("예측 결과를 처리할 수 없습니다.")
+    except Exception as e:
+        latest_prob = 0.0
+        st.error(f"예측 결과 처리 중 오류 발생: {str(e)}")
     
-    col1, col2, col3 = st.columns(3)
+    # 결과 표시
+    col1, col2 = st.columns(2)
     
     with col1:
         st.metric(
@@ -84,28 +93,49 @@ def show_prediction_results(data: pd.DataFrame, predictions: np.ndarray):
         )
     
     with col2:
-        status = "정상" if latest_prob < 50 else "이상"
+        status = "이상" if latest_prob >= 50 else "정상"
         st.metric(
             label="상태",
             value=status,
             delta=None
         )
     
-    with col3:
-        confidence = "높음" if abs(latest_prob - 50) > 30 else "중간" if abs(latest_prob - 50) > 15 else "낮음"
-        st.metric(
-            label="신뢰도",
-            value=confidence,
-            delta=None
-        )
-    
-    # 예측 결과 시각화
+    # 시각화
+    st.subheader("예측 결과 시각화")
     plot_prediction_results(
         data=data,
         predictions=predictions,
         output_dir='results',
         save=False
     )
+    
+    # 상세 정보
+    st.subheader("상세 정보")
+    st.write(f"데이터 포인트 수: {len(data)}")
+    st.write(f"평균 온도: {data['Temp'].mean():.1f}°C")
+    st.write(f"평균 전류: {data['Current'].mean():.2f}A")
+    
+    # 원시 데이터 확인
+    if st.checkbox("원시 데이터 보기"):
+        st.dataframe(data)
+    
+    # 결과 저장
+    if st.button("결과 저장"):
+        result = {
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'input_data': {
+                'temp': data['Temp'].tolist(),
+                'current': data['Current'].tolist()
+            },
+            'anomaly_probability': float(latest_prob),
+            'status': status
+        }
+        
+        os.makedirs('results', exist_ok=True)
+        with open(f'results/prediction_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json', 'w') as f:
+            json.dump(result, f, indent=4)
+        
+        st.success("결과가 저장되었습니다.")
 
 def show_prediction_details(data: pd.DataFrame, predictions: np.ndarray):
     """예측 상세 정보 표시"""
@@ -148,23 +178,6 @@ def main():
         
         # 상세 정보 표시
         show_prediction_details(data, predictions)
-        
-        # 결과 저장
-        results = {
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'temperature': temperature,
-            'current': current,
-            'anomaly_probability': float(predictions[-1][0]),
-            'status': "정상" if predictions[-1][0] < 0.5 else "이상"
-        }
-        
-        # 결과 저장 버튼
-        if st.button("결과 저장"):
-            os.makedirs('results', exist_ok=True)
-            with open('results/prediction_history.json', 'a') as f:
-                json.dump(results, f)
-                f.write('\n')
-            st.success("결과가 저장되었습니다.")
 
 if __name__ == "__main__":
     main() 
