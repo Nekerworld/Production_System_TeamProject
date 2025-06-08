@@ -11,6 +11,7 @@ from plotly.subplots import make_subplots
 import os
 import sys
 import json
+from typing import Dict, Any
 
 # 프로젝트 루트 디렉토리를 Python 경로에 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -137,25 +138,45 @@ def show_prediction_results(data: pd.DataFrame, predictions: np.ndarray):
         
         st.success("결과가 저장되었습니다.")
 
-def show_prediction_details(data: pd.DataFrame, predictions: np.ndarray):
-    """예측 상세 정보 표시"""
-    st.subheader("예측 상세 정보")
+def show_prediction_details(data: pd.DataFrame, predictions: Dict[str, Any]) -> None:
+    """예측 결과 상세 정보 표시"""
+    st.subheader("예측 결과 상세")
     
-    # 데이터 요약
-    st.write("데이터 요약")
-    summary = {
-        "총 데이터 포인트": len(data),
-        "시퀀스 길이": 10,
-        "마지막 시퀀스 평균 온도": f"{data['Temp'].mean():.2f}°C",
-        "마지막 시퀀스 평균 전류": f"{data['Current'].mean():.2f}A",
-        "최근 예측 확률": f"{predictions[-1][0]*100:.1f}%"
-    }
+    # 기본 정보 표시
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(
+            "이상치 확률",
+            f"{predictions['anomaly_percentage']:.1f}%",
+            delta=None
+        )
+    with col2:
+        st.metric(
+            "상태",
+            "이상" if predictions['is_anomaly'] else "정상",
+            delta=None
+        )
+    with col3:
+        st.metric(
+            "신뢰도",
+            predictions['confidence_level'],
+            delta=None
+        )
     
-    for key, value in summary.items():
-        st.write(f"- {key}: {value}")
+    # 데이터 요약 정보
+    st.subheader("데이터 요약")
+    summary = predictions['data_summary']
+    st.write({
+        "총 데이터 포인트": summary['total_points'],
+        "시퀀스 길이": summary['sequence_length'],
+        "평균 온도": f"{summary['last_sequence']['avg_temperature']:.2f}°C",
+        "평균 전류": f"{summary['last_sequence']['avg_current']:.2f}A",
+        "시작 시간": summary['last_sequence']['start_time'],
+        "종료 시간": summary['last_sequence']['end_time']
+    })
     
-    # 원시 데이터 표시
-    if st.checkbox("원시 데이터 보기"):
+    # 원본 데이터 표시 옵션
+    if st.checkbox("원본 데이터 보기"):
         st.dataframe(data)
 
 def main():

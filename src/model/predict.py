@@ -144,13 +144,20 @@ class AnomalyPredictor:
             if len(data) < self.seq_len:
                 raise ValueError(f"데이터 길이가 {self.seq_len}보다 작습니다.")
             
-            # 스케일링
-            scaled_data = scaler.transform(data[['Temp', 'Current']].values)
+            # feature 이름이 있는 DataFrame으로 변환
+            features = pd.DataFrame(data[['Temp', 'Current']], columns=['Temp', 'Current'])
+            
+            # 스케일링 (DataFrame 형태 유지)
+            scaled_data = pd.DataFrame(
+                scaler.transform(features),
+                columns=features.columns,
+                index=features.index
+            )
             
             # 시퀀스 생성
             X = []
             for i in range(len(data) - self.seq_len + 1):
-                X.append(scaled_data[i:i+self.seq_len])
+                X.append(scaled_data.iloc[i:i+self.seq_len].values)
             return np.array(X)
             
         except Exception as e:
