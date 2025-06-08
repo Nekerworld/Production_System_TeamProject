@@ -115,7 +115,7 @@ for start in range(0, len(dataframes) - WINDOW_WIDTH + 1, SLIDE_STEP):
     X_test,  y_test  = seq_generate(test_df,  scaler)
 
     # 모델 학습 (첫 번째 윈도우에서는 새로 학습, 이후에는 이어서 학습)
-    history = model.fit(X_train, y_train, epochs=2, batch_size=32,
+    history = model.fit(X_train, y_train, epochs=200, batch_size=32,
               validation_data=(X_val, y_val), 
               callbacks=[early_stopping, checkpoint], 
               verbose=1)
