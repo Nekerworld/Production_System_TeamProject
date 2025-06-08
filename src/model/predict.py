@@ -349,13 +349,13 @@ class AnomalyPredictor:
             final_predictions = np.mean(all_predictions, axis=0)
             
             # 마지막 시퀀스의 예측 확률
-            last_probability = final_predictions[-1][0]
+            last_probability = float(final_predictions[-1][0])
             
             # 결과 포맷팅
             result = {
                 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'anomaly_probability': float(last_probability),
-                'anomaly_percentage': float(last_probability * 100),
+                'anomaly_probability': last_probability,
+                'anomaly_percentage': last_probability * 100,
                 'is_anomaly': bool(last_probability >= self.threshold),
                 'threshold': float(self.threshold),
                 'confidence_level': '높음' if last_probability > 0.8 else '중간' if last_probability > 0.5 else '낮음',
@@ -368,7 +368,8 @@ class AnomalyPredictor:
                         'avg_temperature': float(data['Temp'].iloc[-self.seq_len:].mean()),
                         'avg_current': float(data['Current'].iloc[-self.seq_len:].mean())
                     }
-                }
+                },
+                'predictions': final_predictions.tolist()  # 전체 예측 결과도 포함
             }
             
             logger.info(f"이상치 확률 계산 완료: {result['anomaly_percentage']:.2f}%")
