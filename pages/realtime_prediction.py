@@ -68,19 +68,17 @@ def generate_sequence_data(temperature: float, current: float, n_points: int = 1
         'Current': currents
     })
 
-def show_prediction_results(data: pd.DataFrame, predictions: np.ndarray):
+def show_prediction_results(data: pd.DataFrame, predictions: Dict[str, Any]):
     """예측 결과 표시"""
     st.subheader("예측 결과")
     
     # 예측 결과 처리
     try:
-        if isinstance(predictions, np.ndarray) and len(predictions) > 0:
-            latest_prob = float(predictions[-1][0]) * 100
-        else:
-            latest_prob = 0.0
-            st.warning("예측 결과를 처리할 수 없습니다.")
+        latest_prob = predictions['anomaly_percentage']
+        status = "이상" if predictions['is_anomaly'] else "정상"
     except Exception as e:
         latest_prob = 0.0
+        status = "정상"
         st.error(f"예측 결과 처리 중 오류 발생: {str(e)}")
     
     # 결과 표시
@@ -94,7 +92,6 @@ def show_prediction_results(data: pd.DataFrame, predictions: np.ndarray):
         )
     
     with col2:
-        status = "이상" if latest_prob >= 50 else "정상"
         st.metric(
             label="상태",
             value=status,
@@ -105,16 +102,22 @@ def show_prediction_results(data: pd.DataFrame, predictions: np.ndarray):
     st.subheader("예측 결과 시각화")
     plot_prediction_results(
         data=data,
-        predictions=predictions,
+        predictions=predictions['predictions'],
         output_dir='results',
         save=False
     )
     
     # 상세 정보
     st.subheader("상세 정보")
-    st.write(f"데이터 포인트 수: {len(data)}")
-    st.write(f"평균 온도: {data['Temp'].mean():.1f}°C")
-    st.write(f"평균 전류: {data['Current'].mean():.2f}A")
+    summary = predictions['data_summary']
+    st.write({
+        "총 데이터 포인트": summary['total_points'],
+        "시퀀스 길이": summary['sequence_length'],
+        "평균 온도": f"{summary['last_sequence']['avg_temperature']:.2f}°C",
+        "평균 전류": f"{summary['last_sequence']['avg_current']:.2f}A",
+        "시작 시간": summary['last_sequence']['start_time'],
+        "종료 시간": summary['last_sequence']['end_time']
+    })
     
     # 원시 데이터 확인
     if st.checkbox("원시 데이터 보기"):
@@ -129,7 +132,8 @@ def show_prediction_results(data: pd.DataFrame, predictions: np.ndarray):
                 'current': data['Current'].tolist()
             },
             'anomaly_probability': float(latest_prob),
-            'status': status
+            'status': status,
+            'confidence_level': predictions['confidence_level']
         }
         
         os.makedirs('results', exist_ok=True)
