@@ -48,13 +48,17 @@ def prepare_new_data(new_data: pd.DataFrame, scaler: StandardScaler) -> np.ndarr
     # feature 이름이 있는 DataFrame으로 변환
     features = pd.DataFrame(new_data[['Temp', 'Current']], columns=['Temp', 'Current'])
     
-    # 스케일링
-    scaled_data = scaler.transform(features)
+    # 스케일링 (DataFrame 형태 유지)
+    scaled_data = pd.DataFrame(
+        scaler.transform(features),
+        columns=features.columns,
+        index=features.index
+    )
     
     # 시퀀스 생성
     X = []
     for i in range(len(new_data) - SEQ_LEN + 1):
-        X.append(scaled_data[i:i+SEQ_LEN])
+        X.append(scaled_data.iloc[i:i+SEQ_LEN].values)
     return np.array(X)
 
 def predict_anomaly_probability(new_data: pd.DataFrame) -> np.ndarray:
@@ -369,7 +373,8 @@ class AnomalyPredictor:
                         'avg_current': float(data['Current'].iloc[-self.seq_len:].mean())
                     }
                 },
-                'predictions': final_predictions.tolist()  # 전체 예측 결과도 포함
+                'predictions': final_predictions.tolist(),  # 전체 예측 결과
+                'last_prediction': last_probability  # 마지막 예측값 추가
             }
             
             logger.info(f"이상치 확률 계산 완료: {result['anomaly_percentage']:.2f}%")
