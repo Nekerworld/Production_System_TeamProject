@@ -17,6 +17,10 @@ from queue import Queue
 import json
 from typing import Tuple
 
+# 로깅 설정
+import logging
+logger = logging.getLogger(__name__)
+
 # 프로젝트 루트 디렉토리를 Python 경로에 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
