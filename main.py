@@ -220,20 +220,3 @@ def predict_anomaly_probability(new_data):
     
     return predictions
 
-# plt.show()
-
-# # 예시 사용법
-# if __name__ == "__main__":
-#     # 모델 저장 디렉토리 생성
-#     os.makedirs('models', exist_ok=True)
-    
-#     # 기존 학습 코드 실행
-#     // ... existing training code ...
-    
-#     # 새로운 데이터 예측 예시
-#     # new_data = pd.DataFrame({
-#     #     'Temp': [...],  # 새로운 온도 데이터
-#     #     'Current': [...]  # 새로운 전류 데이터
-#     # })
-#     # probabilities = predict_anomaly_probability(new_data)
-#     # print(f"이상치 확률: {probabilities[-1][0]*100:.2f}%")
