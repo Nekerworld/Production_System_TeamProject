@@ -62,56 +62,44 @@ for file in csv_files:
 five_process_180sec_merged = pd.concat(dataframes, ignore_index=True)
 five_process_180sec_merged.sort_values('datetime', inplace=True)
 five_process_180sec_merged.reset_index(drop=True, inplace=True)
-five_process_180sec_error_lot = pd.read_csv(os.path.join(five_process_180sec, 'Error Lot list.csv'))
-
-# 라벨링
-csv_data = five_process_180sec_merged.copy()
-csv_data['label'] = 0
-error_df = five_process_180sec_error_lot.copy()
-
-# 첫 컬럼은 날짜, 나머지는 해당 날짜에 이상이 있었던 Index들
-for i in range(len(error_df)):
-    date = error_df.iloc[i, 0]
-    error_indices = error_df.iloc[i, 1:].dropna().astype(int).tolist()
-    # 해당 날짜 & Index에 대해 label = 1 할당
-    mask = (csv_data['Date'] == date) & (csv_data['Index'].isin(error_indices))
-    csv_data.loc[mask, 'label'] = 1
 
 # 데이터 분포 시각화
 plt.figure(figsize=(15, 10))
 
 # 정상 데이터 1% 샘플링
-normal_data = csv_data[csv_data['label'] == 0].sample(frac=0.01, random_state=42)
-anomaly_data = csv_data[csv_data['label'] == 1]
+normal_data = five_process_180sec_merged[five_process_180sec_merged['is_anomaly'] == 0]
+anomaly_data = five_process_180sec_merged[five_process_180sec_merged['is_anomaly'] == 1]
 sampled_data = pd.concat([normal_data, anomaly_data])
+
+print(sampled_data.head(50))
 
 # 1. 온도와 전류의 산점도 (라벨별로 다른 색상)
 plt.subplot(2, 2, 1)
-sns.scatterplot(data=sampled_data, x='Temp', y='Current', hue='label', alpha=0.6)
-plt.title('Temperature vs Current Distribution\n(Normal data sampled to 1%)')
+sns.scatterplot(data=sampled_data, x='Temp', y='Current', hue='is_anomaly',)
+plt.title('Temperature vs Current Distribution')
 plt.xlabel('Temperature')
 plt.ylabel('Current')
 plt.grid()
 
 # 2. 온도 분포 (라벨별로 다른 색상)
 plt.subplot(2, 2, 2)
-sns.kdeplot(data=sampled_data, x='Temp', hue='label', fill=True, alpha=0.3)
-plt.title('Temperature Distribution\n(Normal data sampled to 1%)')
+sns.kdeplot(data=sampled_data, x='Temp', hue='is_anomaly', fill=True,)
+plt.title('Temperature Distribution')
 plt.xlabel('Temperature')
 plt.ylabel('Density')
 plt.grid()
 
 # 3. 전류 분포 (라벨별로 다른 색상)
 plt.subplot(2, 2, 3)
-sns.kdeplot(data=sampled_data, x='Current', hue='label', fill=True, alpha=0.3)
-plt.title('Current Distribution\n(Normal data sampled to 1%)')
+sns.kdeplot(data=sampled_data, x='Current', hue='is_anomaly', fill=True,)
+plt.title('Current Distribution')
 plt.xlabel('Current')
 plt.ylabel('Density')
 plt.grid()
 
 # 4. 클래스 비율 파이 차트
 plt.subplot(2, 2, 4)
-class_counts = csv_data['label'].value_counts()
+class_counts = five_process_180sec_merged['is_anomaly'].value_counts()
 plt.pie(class_counts, labels=['Normal', 'Anomaly'], autopct='%1.1f%%', colors=['skyblue', 'salmon'])
 plt.title('Class Distribution')
 
@@ -119,8 +107,8 @@ plt.tight_layout()
 
 # 클래스 비율 출력
 print("\n클래스 분포:")
-print(f"정상 데이터 수: {class_counts[0]}")
-print(f"이상 데이터 수: {class_counts[1]}")
-print(f"이상 데이터 비율: {(class_counts[1] / len(csv_data) * 100):.2f}%")
+print(f"정상 데이터 수: {len(sampled_data[sampled_data['is_anomaly'] == 0])}")
+print(f"이상 데이터 수: {len(sampled_data[sampled_data['is_anomaly'] == 1])}")
+print(f"이상 데이터 비율: {(class_counts[1] / len(five_process_180sec_merged) * 100):.2f}%")
 
 plt.show()
