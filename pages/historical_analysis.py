@@ -16,7 +16,7 @@ from glob import glob
 # 프로젝트 루트 디렉토리를 Python 경로에 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.utils.data_loader import load_data_files, preprocess_data, mark_anomalies
+from src.utils.data_loader import load_data_files, preprocess_data
 from src.utils.visualization import plot_prediction_results
 
 # 페이지 설정 (app.py에서 전역으로 설정되므로 여기서는 제거합니다.)

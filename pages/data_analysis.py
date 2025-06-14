@@ -19,7 +19,7 @@ from src.utils.data_loader import load_data_files, preprocess_data # 데이터 �
 
 def load_and_prepare_all_data(data_dir: str = 'data/장비이상 조기탐지/5공정_180sec') -> pd.DataFrame:
     """모든 데이터를 로드하고 전처리하여 단일 DataFrame으로 반환합니다."""
-    st.info(f"데이터 디렉토리: {data_dir} 에서 데이터 로드 중...")
+    st.toast(f"데이터 디렉토리: {data_dir} 에서 데이터 로드 중...")
     dataframes, error_df = load_data_files(data_dir)
     
     if not dataframes:
@@ -27,11 +27,11 @@ def load_and_prepare_all_data(data_dir: str = 'data/장비이상 조기탐지/5�
         return pd.DataFrame()
     
     all_data = pd.concat(dataframes, ignore_index=True)
-    st.success(f"총 {len(all_data)}개의 데이터 포인트 로드 완료.")
+    st.toast(f"총 {len(all_data)}개의 데이터 포인트 로드 완료.")
     
-    st.info("데이터 전처리 중...")
+    st.toast("데이터 전처리 중...")
     processed_data, _ = preprocess_data(all_data, error_df) # 여기서 scaler는 사용하지 않으므로 무시
-    st.success("데이터 전처리 완료.")
+    st.toast("데이터 전처리 완료.")
     
     return processed_data
 
