@@ -1,5 +1,7 @@
-# Production_System_TeamProject
+# Production System TeamProject
 2025년 1학기 생산시스템 구축실무 과목의 팀 프로젝트에 대한 레포지토리입니다.
+
+이 레포지토리는 개발용 레포지토리이며, Deploy용 레포지토리는 [여기](https://github.com/Nekerworld/Production-System-Public)를 클릭해주세요.
 
 ## ⚙️ 개발 환경 및 실행 환경 (Environment)
 
